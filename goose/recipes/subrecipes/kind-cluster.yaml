@@ -1,0 +1,387 @@
+version: "1.0.0"
+title: "Kind Cluster Provisioner"
+description: "Provision a kind cluster with OLM and OpenShift Console, returning cluster authentication coordinates as structured JSON."
+
+parameters:
+  - key: cluster_name
+    input_type: string
+    requirement: optional
+    default: "goose-console"
+    description: "Name for the kind cluster"
+  - key: kubernetes_version
+    input_type: string
+    requirement: optional
+    default: "v1.31.4"
+    description: "Kubernetes version for the kind node image (e.g. v1.31.4)"
+  - key: console_image
+    input_type: string
+    requirement: optional
+    default: "quay.io/openshift/origin-console:latest"
+    description: "Container image for the OpenShift Console"
+  - key: console_node_port
+    input_type: number
+    requirement: optional
+    default: 30443
+    description: "NodePort to expose the OpenShift Console on the host"
+
+extensions:
+  - type: builtin
+    name: developer
+    display_name: Developer
+    timeout: 600
+    bundled: true
+
+prompt: |
+  Deploy a kind cluster named "{{ cluster_name }}", install OLM, deploy the
+  OpenShift Console via OLM, and return the authentication coordinates as
+  structured JSON. Follow the instructions precisely.
+
+instructions: |
+  You are provisioning a local Kubernetes environment. Follow every step in
+  order. Do NOT skip verification gates — each step must succeed before
+  proceeding to the next.
+
+  ──────────────────────────────────────────────────────────────────────
+  STEP 1 — Prerequisites
+  ──────────────────────────────────────────────────────────────────────
+  Verify the following CLI tools are installed and on the PATH:
+    • kubectl
+    • curl
+
+  If kubectl or curl is missing, stop and report the missing dependency.
+
+  Check whether "kind" is available on the PATH:
+    which kind || command -v kind
+
+  If kind is NOT found, install it automatically:
+    1. Detect the platform and architecture:
+         OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+         ARCH=$(uname -m)
+         if [ "$ARCH" = "x86_64" ]; then ARCH="amd64"; fi
+         if [ "$ARCH" = "aarch64" ]; then ARCH="arm64"; fi
+    2. Download the latest kind binary:
+         curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-${OS}-${ARCH}"
+    3. Make it executable and move it onto the PATH:
+         chmod +x ./kind
+         mkdir -p "$HOME/.local/bin"
+         mv ./kind "$HOME/.local/bin/kind"
+         export PATH="$HOME/.local/bin:$PATH"
+    4. Verify the installation:
+         kind --version
+       If this fails, stop and report the error.
+
+  If kind IS already installed, verify it runs:
+    kind --version
+
+  ──────────────────────────────────────────────────────────────────────
+  STEP 2 — Create the Kind Cluster
+  ──────────────────────────────────────────────────────────────────────
+  If a kind cluster named "{{ cluster_name }}" already exists, delete it
+  first so the recipe is idempotent.
+
+  Write the following kind configuration to a temp file and create the
+  cluster with it:
+
+  ```yaml
+  kind: Cluster
+  apiVersion: kind.x-k8s.io/v1alpha4
+  nodes:
+    - role: control-plane
+      image: kindest/node:{{ kubernetes_version }}
+      kubeadmConfigPatches:
+        - |
+          kind: InitConfiguration
+          nodeRegistration:
+            kubeletExtraArgs:
+              node-labels: "ingress-ready=true"
+      extraPortMappings:
+        - containerPort: {{ console_node_port }}
+          hostPort: {{ console_node_port }}
+          protocol: TCP
+  ```
+
+  Run:
+    kind create cluster --name "{{ cluster_name }}" --config <temp-file>
+
+  After creation, set the kubectl context:
+    kubectl cluster-info --context "kind-{{ cluster_name }}"
+
+  Verify the node is Ready:
+    kubectl wait --for=condition=Ready node --all --timeout=120s
+
+  ──────────────────────────────────────────────────────────────────────
+  STEP 3 — Install Operator Lifecycle Manager (OLM)
+  ──────────────────────────────────────────────────────────────────────
+  Install OLM from the latest upstream release:
+
+    kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/crds.yaml
+    kubectl wait --for=condition=Established crd --all --timeout=60s
+    kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/olm.yaml
+
+  Wait for all OLM pods to be Running:
+    kubectl rollout status deployment/olm-operator     -n olm --timeout=120s
+    kubectl rollout status deployment/catalog-operator  -n olm --timeout=120s
+    kubectl rollout status deployment/packageserver     -n olm --timeout=120s
+
+  Verify the operatorhubio-catalog CatalogSource is serving:
+    kubectl wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY \
+      catalogsource/operatorhubio-catalog -n olm --timeout=180s
+
+  ──────────────────────────────────────────────────────────────────────
+  STEP 4 — Deploy OpenShift Console via OLM
+  ──────────────────────────────────────────────────────────────────────
+  The OpenShift Console UI is not packaged as a standalone community
+  operator for vanilla Kubernetes, so we create a minimal OLM-managed
+  deployment using a ClusterServiceVersion (CSV). This keeps the console
+  under OLM lifecycle management (upgrades, health checks, RBAC).
+
+  4a. Create the target namespace:
+    kubectl create namespace openshift-console
+
+  4b. Create an OperatorGroup so OLM can manage operators in this namespace:
+
+  ```yaml
+  apiVersion: operators.coreos.com/v1
+  kind: OperatorGroup
+  metadata:
+    name: console-operator-group
+    namespace: openshift-console
+  spec:
+    targetNamespaces:
+      - openshift-console
+  ```
+
+  4c. Create a ServiceAccount with cluster-wide read access for the console:
+
+  ```yaml
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: openshift-console
+    namespace: openshift-console
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: openshift-console
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: cluster-admin
+  subjects:
+    - kind: ServiceAccount
+      name: openshift-console
+      namespace: openshift-console
+  ```
+
+  4d. Create a long-lived token Secret for the console ServiceAccount:
+
+  ```yaml
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: openshift-console-token
+    namespace: openshift-console
+    annotations:
+      kubernetes.io/service-account.name: openshift-console
+  type: kubernetes.io/service-account-token
+  ```
+
+  Wait for the token to be populated:
+    kubectl get secret openshift-console-token -n openshift-console \
+      -o jsonpath='{.data.token}' | base64 -d
+
+  Retry until the token is non-empty (the controller needs a moment).
+
+  4e. Create a ClusterServiceVersion to have OLM manage the console deployment:
+
+  ```yaml
+  apiVersion: operators.coreos.com/v1alpha1
+  kind: ClusterServiceVersion
+  metadata:
+    name: openshift-console.v0.1.0
+    namespace: openshift-console
+  spec:
+    displayName: OpenShift Console
+    description: >
+      OpenShift Console UI deployed on a kind cluster and managed by OLM.
+    maturity: alpha
+    version: 0.1.0
+    maintainers:
+      - name: Goose Recipe
+        email: noreply@example.com
+    provider:
+      name: Goose Recipe
+    installModes:
+      - type: OwnNamespace
+        supported: true
+      - type: SingleNamespace
+        supported: true
+      - type: MultiNamespace
+        supported: false
+      - type: AllNamespaces
+        supported: false
+    install:
+      strategy: deployment
+      spec:
+        clusterPermissions:
+          - serviceAccountName: openshift-console
+            rules:
+              - apiGroups: ["*"]
+                resources: ["*"]
+                verbs: ["get", "list", "watch"]
+        deployments:
+          - name: openshift-console
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: openshift-console
+              template:
+                metadata:
+                  labels:
+                    app: openshift-console
+                spec:
+                  serviceAccountName: openshift-console
+                  containers:
+                    - name: console
+                      image: {{ console_image }}
+                      ports:
+                        - containerPort: 9000
+                          name: http
+                      env:
+                        - name: BRIDGE_USER_AUTH
+                          value: disabled
+                        - name: BRIDGE_K8S_MODE
+                          value: off-cluster
+                        - name: BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT
+                          value: https://kubernetes.default.svc
+                        - name: BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS
+                          value: "true"
+                        - name: BRIDGE_K8S_AUTH
+                          value: bearer-token
+                        - name: BRIDGE_K8S_AUTH_BEARER_TOKEN
+                          valueFrom:
+                            secretKeyRef:
+                              name: openshift-console-token
+                              key: token
+                        - name: BRIDGE_LISTEN
+                          value: http://0.0.0.0:9000
+                      readinessProbe:
+                        httpGet:
+                          path: /health
+                          port: 9000
+                          scheme: HTTP
+                        initialDelaySeconds: 5
+                        periodSeconds: 10
+                      livenessProbe:
+                        httpGet:
+                          path: /health
+                          port: 9000
+                          scheme: HTTP
+                        initialDelaySeconds: 15
+                        periodSeconds: 30
+  ```
+
+  4f. Create a Service and expose it via NodePort:
+
+  ```yaml
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: openshift-console
+    namespace: openshift-console
+  spec:
+    type: NodePort
+    selector:
+      app: openshift-console
+    ports:
+      - port: 9000
+        targetPort: 9000
+        nodePort: {{ console_node_port }}
+        protocol: TCP
+        name: http
+  ```
+
+  4g. Wait for the CSV to reach the Succeeded phase:
+    kubectl wait --for=jsonpath='{.status.phase}'=Succeeded \
+      csv/openshift-console.v0.1.0 -n openshift-console --timeout=180s
+
+  4h. Wait for the console pod to become ready:
+    kubectl wait --for=condition=Ready pod -l app=openshift-console \
+      -n openshift-console --timeout=120s
+
+  ──────────────────────────────────────────────────────────────────────
+  STEP 5 — Verify the Console is Accessible
+  ──────────────────────────────────────────────────────────────────────
+  Verify the console responds:
+    curl -sf -o /dev/null http://localhost:{{ console_node_port }}/health
+
+  If the health check fails, inspect the pod logs:
+    kubectl logs -l app=openshift-console -n openshift-console --tail=50
+
+  ──────────────────────────────────────────────────────────────────────
+  STEP 6 — Collect Authentication Coordinates
+  ──────────────────────────────────────────────────────────────────────
+  Gather the following values and return them as the structured JSON
+  response:
+
+  • cluster_name  — "{{ cluster_name }}"
+  • api_server    — extract from:
+      kubectl config view --minify --context "kind-{{ cluster_name }}" \
+        -o jsonpath='{.clusters[0].cluster.server}'
+  • kubeconfig_path — the absolute path to the active kubeconfig file
+      (usually $HOME/.kube/config). Verify with: echo "$KUBECONFIG" or
+      fall back to $HOME/.kube/config.
+  • console_url   — "http://localhost:{{ console_node_port }}"
+  • console_namespace — "openshift-console"
+  • token         — extract the SA token:
+      kubectl get secret openshift-console-token -n openshift-console \
+        -o jsonpath='{.data.token}' | base64 -d
+  • ca_cert_path  — extract the kind cluster CA certificate path from kubeconfig:
+      kubectl config view --minify --context "kind-{{ cluster_name }}" \
+        -o jsonpath='{.clusters[0].cluster.certificate-authority}'
+      If it is embedded (certificate-authority-data), write the decoded
+      value to $HOME/.kube/kind-{{ cluster_name }}-ca.crt and use that
+      path instead.
+  • context_name  — "kind-{{ cluster_name }}"
+
+  Return ALL of these fields in the final JSON output.
+
+response:
+  json_schema:
+    type: object
+    properties:
+      cluster_name:
+        type: string
+        description: "Name of the kind cluster"
+      api_server:
+        type: string
+        description: "Kubernetes API server URL (e.g. https://127.0.0.1:PORT)"
+      kubeconfig_path:
+        type: string
+        description: "Absolute path to the kubeconfig file"
+      console_url:
+        type: string
+        description: "URL to access the OpenShift Console in a browser"
+      console_namespace:
+        type: string
+        description: "Namespace where the OpenShift Console is deployed"
+      token:
+        type: string
+        description: "Bearer token for authenticating to the cluster"
+      ca_cert_path:
+        type: string
+        description: "Absolute path to the cluster CA certificate file"
+      context_name:
+        type: string
+        description: "kubectl context name for this cluster"
+    required:
+      - cluster_name
+      - api_server
+      - kubeconfig_path
+      - console_url
+      - console_namespace
+      - token
+      - ca_cert_path
+      - context_name

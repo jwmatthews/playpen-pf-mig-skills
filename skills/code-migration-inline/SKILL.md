@@ -74,7 +74,16 @@ E2E tests: <command>
 Primary language: <language>
 ```
 
-### Step 2: Build Kantra Command
+### Step 2: Detect OpenShift Console Plugin
+
+Check whether the project is an OpenShift Console dynamic plugin. Look for **all** of these indicators:
+- `@openshift-console/dynamic-plugin-sdk` in `package.json` dependencies or devDependencies
+- A `console-extensions.json` file in the project root
+- A `ConsolePlugin` resource in any YAML/JSON file under the project
+
+If **any** indicator is present, mark the project as a console plugin (`IS_CONSOLE_PLUGIN=true`). Record this in `$WORK_DIR/status.md` under a `## Project Type` heading once the workspace is created.
+
+### Step 3: Build Kantra Command
 
 Construct the Kantra analyze command flags.
 
@@ -112,13 +121,13 @@ Construct the Kantra analyze command flags.
 kantra analyze --input <project> --output $WORK_DIR/round-N/kantra <FLAGS>
 ```
 
-### Step 3: Create Workspace
+### Step 4: Create Workspace
 
 ```bash
 WORK_DIR=$(mktemp -d -t migration-$(date +%m_%d_%y_%H))
 ```
 
-### Step 4: Check Target Technology Specific Guidance
+### Step 5: Check Target Technology Specific Guidance
 
 Read `targets/<target>.md` if it exists. Follow pre-migration steps before Phase 2.
 
@@ -248,6 +257,50 @@ Run E2E/behavioral tests and complete target-specific validation.
 3. If tests FAIL → Fix issues, re-run
 4. If tests PASS → Continue to target validation
 
+### Console Plugin Cluster Validation
+
+**Only perform this section if `IS_CONSOLE_PLUGIN=true` (detected in Phase 1 step 2).**
+
+Console dynamic plugins must be tested inside an OpenShift Console to verify they load, register their extensions, and render correctly.
+
+**1. Prerequisites**: Verify `kubectl` and `curl` are available. If `kind` is not installed, install it:
+```bash
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+[ "$ARCH" = "x86_64" ] && ARCH="amd64"
+[ "$ARCH" = "aarch64" ] && ARCH="arm64"
+curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-${OS}-${ARCH}"
+chmod +x ./kind && mkdir -p "$HOME/.local/bin" && mv ./kind "$HOME/.local/bin/kind"
+```
+
+**2. Create kind cluster**: Delete any existing cluster with the same name, then create one with a NodePort mapping (port 30443). Wait for the node to be Ready.
+
+**3. Install OLM**:
+```bash
+kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/crds.yaml
+kubectl wait --for=condition=Established crd --all --timeout=60s
+kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/olm.yaml
+```
+Wait for `olm-operator`, `catalog-operator`, and `packageserver` deployments to roll out. Verify the `operatorhubio-catalog` CatalogSource is READY.
+
+**4. Deploy OpenShift Console via OLM**: Create namespace `openshift-console`, an OperatorGroup, a ServiceAccount with cluster-admin, a `kubernetes.io/service-account-token` Secret, a ClusterServiceVersion deploying `quay.io/openshift/origin-console:latest` with `BRIDGE_K8S_MODE=off-cluster` and `BRIDGE_USER_AUTH=disabled`, and a NodePort Service on port 30443. Wait for the CSV to reach `Succeeded` and the pod to be Ready.
+
+**5. Verify console health**: `curl -sf -o /dev/null http://localhost:30443/health`
+
+**6. Collect credentials**: Extract `api_server`, `token`, `kubeconfig_path`, `ca_cert_path`, `context_name`, and `console_url`. Save to `$WORK_DIR/cluster-credentials.json`.
+
+**7. Build and deploy plugin**: Build the plugin container image, load it into kind, create a Deployment + Service + `ConsolePlugin` CR in the cluster. Use existing deployment manifests if available.
+
+**8. Verify plugin**: Confirm the plugin appears in the console and check logs for loading errors.
+
+Log the result in `$WORK_DIR/status.md`:
+```markdown
+### Cluster Validation
+- Console plugin deployed: YES/NO
+- Plugin loaded in console: YES/NO
+- Console URL: <url>
+```
+
 ### Target Validation
 
 **Follow all post-migration steps in `targets/<target>.md`. These steps are mandatory — do not skip them.** The migration is not complete until all post-migration validation passes.
@@ -261,6 +314,7 @@ All must be checked:
 - [ ] Unit tests: pass
 - [ ] E2E tests: pass
 - [ ] Target-specific validation complete
+- [ ] Console plugin loads in cluster (if `IS_CONSOLE_PLUGIN=true`)
 
 Update status.md:
 ```markdown
@@ -271,6 +325,7 @@ Update status.md:
 - Unit tests: PASS
 - E2E tests: PASS
 - Target validation: PASS
+- Console plugin validation: PASS/SKIP
 ```
 
 ---

@@ -91,6 +91,10 @@ sub_recipes:
       target_tech: "{{ target_tech }}"
       project_path: "{{ input_path }}"
 
+  - name: "kind_cluster"
+    path: "{{ recipe_dir }}/subrecipes/kind-cluster.yaml"
+    description: "Provision a kind cluster with OLM and OpenShift Console for deployment validation"
+
 instructions: |
   You are a code migration specialist.  Follow the steps below to migrate the application at {{ input_path }} from {{ source_tech }} to {{ target_tech }}.
 
@@ -128,21 +132,28 @@ instructions: |
 
   1. **Explore project**: Invoke `project_explorer` subrecipe. Get build command, test commands, lint command.
 
-  2. **Build Kantra command**: Invoke `kantra_command_builder` subrecipe with:
+  2. **Detect OpenShift Console plugin**: Check whether the project is an OpenShift Console dynamic plugin. Look for **all** of these indicators:
+     - `@openshift-console/dynamic-plugin-sdk` in `package.json` dependencies or devDependencies
+     - A `console-extensions.json` file in the project root
+     - A `ConsolePlugin` resource in any YAML/JSON file under the project
+
+     If **any** indicator is present, set `IS_CONSOLE_PLUGIN=true`. Record this in `$WORK_DIR/status.md` under a `## Project Type` heading once the workspace is created.
+
+  3. **Build Kantra command**: Invoke `kantra_command_builder` subrecipe with:
      - project_path: "{{ input_path }}"
      - migration_goal: "{{ target_tech }}"
      {% if rules %}- custom_rules_path: "{{ rules }}"{% endif %}
 
      The subrecipe returns ONLY the flags. You add `--input` and `--output`.
 
-  3. **Create workspace**:
+  4. **Create workspace**:
      If workspace_dir is provided, use it. Otherwise, create a temporary workspace directory:
      ```bash
      WORK_DIR=$(mktemp -d -t migration-$(date +%m_%d_%y_%H))
      ```
      **All sub-recipe invocations below use this directory as the work directory.** All migration artifacts — Kantra output, status files, screenshots, manifests, and reports — must go inside `$WORK_DIR`. Never use the project directory as the work directory.
 
-  4. **Check target technology specific guidance**: Look for `{{ recipe_dir }}/targets/<target>.md` and follow pre-migration steps.
+  5. **Check target technology specific guidance**: Look for `{{ recipe_dir }}/targets/<target>.md` and follow pre-migration steps.
 
   ---
 
@@ -245,6 +256,46 @@ instructions: |
   2. If tests FAIL → Fix issues, re-run
   3. If tests PASS → Continue to target validation
 
+  ### Console Plugin Cluster Validation
+
+  **Only perform this section if `IS_CONSOLE_PLUGIN=true` (detected in Phase 1 step 2).**
+
+  Console dynamic plugins must be tested inside an OpenShift Console to verify they load, register their extensions, and render correctly.
+
+  1. **Provision cluster**: Invoke `kind_cluster` sub-recipe. It returns JSON with `cluster_name`, `api_server`, `console_url`, `token`, `kubeconfig_path`, `ca_cert_path`, and `context_name`. Save the returned JSON to `$WORK_DIR/cluster-credentials.json`.
+
+  2. **Build plugin image**: Build the plugin container image using the project's build tooling (typically `npm run build` followed by a container build). Tag it as `localhost/console-plugin:latest`.
+
+  3. **Load image into kind**: Load the image so the cluster can access it:
+     ```bash
+     kind load docker-image localhost/console-plugin:latest --name <cluster_name>
+     ```
+
+  4. **Deploy plugin to cluster**: Create a Deployment, Service, and `ConsolePlugin` CR in the cluster for the plugin. Use the project's existing deployment manifests if available, otherwise create minimal resources:
+     - Deployment serving the plugin assets on port 9001
+     - Service targeting the deployment
+     - `ConsolePlugin` CR referencing the Service
+
+  5. **Enable the plugin**: Patch the console to load the plugin:
+     ```bash
+     kubectl patch consoles.operator.openshift.io cluster --type=merge \
+       -p '{"spec":{"plugins":["<plugin-name>"]}}'
+     ```
+     If the `consoles.operator.openshift.io` CRD does not exist (vanilla Kubernetes), skip this step — the plugin will load via the `ConsolePlugin` CR if the console is configured to discover plugins.
+
+  6. **Verify**: Open the `console_url` from the cluster credentials and confirm the plugin appears in the console navigation or the expected extension points render without errors. Check the console pod logs for plugin loading errors:
+     ```bash
+     kubectl logs -l app=openshift-console -n openshift-console --tail=30
+     ```
+
+  Log the cluster validation result in `$WORK_DIR/status.md`:
+  ```markdown
+  ### Cluster Validation
+  - Console plugin deployed: YES/NO
+  - Plugin loaded in console: YES/NO
+  - Console URL: <url>
+  ```
+
   ### Target Validation
 
   **Follow all post-migration steps in `{{ recipe_dir }}/targets/<target>.md`. These steps are mandatory — do not skip them.** The migration is not complete until all post-migration validation passes.
@@ -258,6 +309,7 @@ instructions: |
   - [ ] Unit tests: pass
   - [ ] E2E tests: pass
   - [ ] Target-specific validation complete
+  - [ ] Console plugin loads in cluster (if `IS_CONSOLE_PLUGIN=true`)
 
   Update status.md:
   ```markdown
@@ -268,6 +320,7 @@ instructions: |
   - Unit tests: PASS
   - E2E tests: PASS
   - Target validation: PASS
+  - Console plugin validation: PASS/SKIP
   ```
 
   ---

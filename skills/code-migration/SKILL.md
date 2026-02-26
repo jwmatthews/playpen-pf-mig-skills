@@ -27,7 +27,14 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
 
 1. **Explore project**: Delegate to `project-explorer` subagent with the path to the project. Get build command, dev server command, test commands, lint command.
 
-2. **Build Kantra command**: Ask user:
+2. **Detect OpenShift Console plugin**: Check whether the project is an OpenShift Console dynamic plugin. Look for **all** of these indicators:
+   - `@openshift-console/dynamic-plugin-sdk` in `package.json` dependencies or devDependencies
+   - A `console-extensions.json` file in the project root
+   - A `ConsolePlugin` resource in any YAML/JSON file under the project
+
+   If **any** indicator is present, mark the project as a console plugin. Record this in `$WORK_DIR/status.md` under a `## Project Type` heading once the workspace is created.
+
+3. **Build Kantra command**: Ask user:
    - Use custom rules? (If yes, get path)
    - Enable default rulesets?
 
@@ -35,13 +42,13 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
 
    It returns flags; you add `--input` and `--output`.
 
-3. **Create workspace**: Create temp directory *outside* the project:
+4. **Create workspace**: Create temp directory *outside* the project:
    ```bash
    WORK_DIR=$(mktemp -d -t migration-$(date +%m_%d_%y_%H))
    ```
    **All subagent delegations below use this directory as the work directory.** All migration artifacts — Kantra output, status files, screenshots, manifests, and reports — must go inside `$WORK_DIR`. Never use the project directory as the work directory.
 
-4. **Check target technology specific guidance**: Read `targets/<target>.md` if it exists. Follow pre-migration steps before Phase 2.
+5. **Check target technology specific guidance**: Read `targets/<target>.md` if it exists. Follow pre-migration steps before Phase 2.
 
 ---
 
@@ -144,6 +151,32 @@ Run E2E/behavioral tests and complete target-specific validation.
 2. If tests FAIL → Fix issues, re-run
 3. If tests PASS → Continue to target-specific validation
 
+### Console Plugin Cluster Validation
+
+**Only perform this section if the project was detected as an OpenShift Console dynamic plugin in Phase 1 step 2.**
+
+Console dynamic plugins must be tested inside an OpenShift Console to verify they load, register their extensions, and render correctly.
+
+1. **Provision cluster**: Delegate to `kind-cluster` subagent with the desired cluster name. It returns JSON with `cluster_name`, `api_server`, `console_url`, `token`, `kubeconfig_path`, `ca_cert_path`, and `context_name`. Save the returned JSON to `$WORK_DIR/cluster-credentials.json`.
+
+2. **Build plugin image**: Build the plugin container image using the project's build tooling (typically `npm run build` followed by a container build). Tag it as `localhost/console-plugin:latest`.
+
+3. **Load image into kind**: `kind load docker-image localhost/console-plugin:latest --name <cluster_name>`
+
+4. **Deploy plugin to cluster**: Create a Deployment, Service, and `ConsolePlugin` CR in the cluster. Use the project's existing deployment manifests if available, otherwise create minimal resources serving the plugin assets on port 9001.
+
+5. **Enable the plugin**: Patch the console to load the plugin. If the `consoles.operator.openshift.io` CRD does not exist (vanilla Kubernetes), skip — the plugin loads via the `ConsolePlugin` CR.
+
+6. **Verify**: Confirm the plugin appears in the console at the `console_url`. Check the console pod logs for plugin loading errors.
+
+Log the result in `$WORK_DIR/status.md`:
+```markdown
+### Cluster Validation
+- Console plugin deployed: YES/NO
+- Plugin loaded in console: YES/NO
+- Console URL: <url>
+```
+
 ### Target-Specific Validation
 
 **Follow all post-migration steps in `targets/<target>.md`. These steps are mandatory — do not skip them.** The migration is not complete until all post-migration validation passes.
@@ -157,6 +190,7 @@ All must be checked:
 - [ ] Unit tests: pass
 - [ ] E2E tests: pass
 - [ ] Target-specific validation complete
+- [ ] Console plugin loads in cluster (if console plugin project)
 
 Update status.md:
 ```markdown
@@ -167,6 +201,7 @@ Update status.md:
 - Unit tests: PASS
 - E2E tests: PASS
 - Target validation: PASS
+- Console plugin validation: PASS/SKIP
 ```
 
 ---
