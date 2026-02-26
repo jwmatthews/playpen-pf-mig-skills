@@ -232,7 +232,12 @@ If unchecked (`[ ]`) issues remain → continue to step 4.
 
 Read `$WORK_DIR/status.md` to understand what migration issues have been fixed so far. This helps identify root causes of visual regressions.
 
-Fix unchecked issues by page/route:
+**Start the dev server once** and keep it running for the entire fix process:
+
+1. Start the dev server **in the background** (append `&`) and capture the process ID
+2. **Poll the URL every 2 seconds, up to 120 seconds.** After the server responds, **wait an additional 5 seconds** for JS bundles and assets. **Do not call any `playwright-mcp` tool until both checks pass.**
+
+Fix unchecked issues by page/route. **The dev server stays running throughout.** After making code changes, the dev server's hot module replacement (HMR) will automatically rebuild. Wait 3-5 seconds after saving code changes for HMR to complete before taking screenshots.
 
 1. **Group unchecked issues by page**
 2. **For each page with unchecked issues**:
@@ -240,17 +245,17 @@ Fix unchecked issues by page/route:
    - Identify cause in code — trace the visual difference to a specific code change (CSS property, component prop, class name, design token, etc.)
    - Make code changes to resolve. The fix must make the current rendering match the baseline.
    - Verify:
-     **The application MUST be running and fully responsive before any `playwright-mcp` interaction.**
-     - Start app **in the background** (append `&`) and capture the process ID
-     - **Poll the URL every 2 seconds, up to 120 seconds.** After the server responds, **wait an additional 5 seconds** for JS bundles and assets. **Do not call any `playwright-mcp` tool until both checks pass.**
+     - **Wait 3-5 seconds** after saving code changes for HMR to rebuild
+     - If the dev server has crashed or stopped responding (verify with a quick health check), restart it and wait for readiness before continuing
      - Use `playwright-mcp` to navigate to the page, take new screenshot
      - Compare the new screenshot against the **baseline** screenshot. Do not compare against the previous post-migration screenshot.
-     - Stop the app
    - If the issue persists (new screenshot still differs from baseline), try a different approach. Keep trying until fixed.
    - **First**: append a brief (2-3 line) summary to `$WORK_DIR/visual-fixes.md` describing what was changed and why (or noting the issue was unfixable and why). Write this before any other update so partial progress is preserved if the agent fails midway.
    - Copy the verified screenshot to the post-migration directory: `cp` the screenshot to `$WORK_DIR/post-migration-N/<name>.png`
    - Mark fixed issues as `[x]` in `$WORK_DIR/visual-diff-report.md`
    - Do not wait until all pages are done.
+
+3. **Stop the dev server** after all pages have been processed: `kill $DEV_PID`
 
 **Fix ALL issues (major AND minor) before completing migration.** Do not dismiss minor issues as acceptable.
 

@@ -49,11 +49,23 @@ Read `<work_dir>/visual-diff-report.md`. Collect all unchecked (`[ ]`) issues.
 
 If no unchecked issues exist, report success and stop.
 
-### 3. Fix Loop (per page)
+### 3. Start Dev Server (once)
+
+**The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Start the dev server **once** and keep it running for the entire fix loop.
+
+1. Start the dev server **in the background** (append `&`) and capture the process ID
+2. Extract the local URL from the server output (e.g., `http://localhost:3000`)
+3. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, report the error and stop.
+4. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
+5. **Do not call any `playwright-mcp` tool until both checks above pass.**
+
+### 4. Fix Loop (per page)
 
 Group unchecked issues by page. Maintain a round counter starting at 0.
 
 For each fix attempt, create a round directory: `<work_dir>/visual-fix-round-N/` (increment N each attempt).
+
+**The dev server stays running throughout this loop.** After making code changes, the dev server's hot module replacement (HMR) will automatically rebuild. Wait 3-5 seconds after saving code changes for HMR to complete before taking screenshots.
 
 For each page:
 
@@ -61,15 +73,11 @@ For each page:
 2. **Identify cause**: Look at the code for this page/component, find what changed. Trace the visual difference to a specific code change (CSS property, component prop, class name, design token, etc.).
 3. **Fix**: Make code changes to resolve the visual differences. The fix must make the current rendering match the baseline — not some other "correct" state.
 4. **Verify**:
-   **The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Playwright operations will fail if the server is not ready.
-   - Start the app **in the background** (append `&` or equivalent) and capture the process ID
-   - **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, report the error and stop.
-   - **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
-   - **Do not call any `playwright-mcp` tool until both checks above pass.**
+   - **Wait 3-5 seconds** after saving code changes for HMR to rebuild
+   - If the dev server has crashed or stopped responding (verify with a quick health check), restart it and wait for readiness before continuing
    - Use `playwright-mcp` to navigate to the page, take a new screenshot, and save it to `<work_dir>/visual-fix-round-N/<name>.png`
    - Compare the new screenshot against the **baseline** screenshot to verify the issues are fixed. Do not compare against the previous post-migration screenshot.
-   - Stop the app
-5. **Iterate**: If the issue persists (the new screenshot still differs from baseline), increment the round counter, try a different approach. Keep trying until fixed. If the issue cannot be fixed after 2 attempts, classify that as unfixeable and move onto next issue.
+5. **Iterate**: If the issue persists (the new screenshot still differs from baseline), increment the round counter, try a different approach. Keep trying until fixed. If the issue cannot be fixed after 2 attempts, classify that as unfixable and move onto next issue.
 6. **Update immediately** after each page — **write `visual-fixes.md` first**, before any other update, so partial progress is preserved if the agent fails midway:
    - **First**: append a brief (2-3 line) summary to `<work_dir>/visual-fixes.md` describing what was changed and why (or noting the issue was unfixable and why)
    - Copy the verified screenshot to the post-migration directory: `cp <work_dir>/visual-fix-round-N/<name>.png <post_migration_dir>/<name>.png`
@@ -77,7 +85,15 @@ For each page:
 
 Do not wait until all pages are done — update all files after every page so progress is visible.
 
-### 4. Fix Log Format
+### 5. Stop Dev Server
+
+After all pages have been processed (or if an unrecoverable error occurs), stop the dev server:
+
+```bash
+kill $DEV_PID
+```
+
+### 6. Fix Log Format
 
 Maintain `<work_dir>/visual-fixes.md` with brief entries per page:
 
