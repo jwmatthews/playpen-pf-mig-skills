@@ -12,7 +12,7 @@ Pre-Migration → Phase 2 (Fix Loop) → Phase 3 (E2E Tests) → Visual Comparis
 
 ## Pre-Migration
 
-Complete BEFORE Phase 2.
+**Complete ALL of these steps BEFORE Phase 2. These steps are strictly sequential — each step must complete before the next one starts. Do not parallelize them.** The visual baseline (step 2) must capture the code in its original pre-migration state, before pf-codemods or any other tool modifies the source.
 
 ### 1. Discover UI Elements
 
@@ -24,11 +24,14 @@ This creates `$WORK_DIR/manifest.md` with every route, interactive component, th
 
 ### 2. Capture Visual Baseline
 
+For console plugins (`IS_CONSOLE_PLUGIN=true`): read `$WORK_DIR/console-dev-setup.json` and use the console dev command as `dev_command` and the console dev URL as `dev_url`.
+
 Invoke `visual_captures` sub-recipe with:
 - `work_dir`: the `$WORK_DIR` path created in Phase 1
 - `output_dir`: `$WORK_DIR/baseline`
 - `project_path`: path to the project
-- `dev_command`: dev server command (from project discovery)
+- `dev_command`: console dev command if console plugin, otherwise dev server command from project discovery
+- `dev_url`: console dev URL if console plugin (e.g., `http://localhost:9000`), otherwise omit
 
 This captures screenshots for every entry in the manifest and saves them to `$WORK_DIR/baseline/`.
 
@@ -86,11 +89,14 @@ Repeat the following loop until no unchecked issues remain. N is the fix round, 
 
 **Step 1: Capture screenshots**
 
+For console plugins (`IS_CONSOLE_PLUGIN=true`): read `$WORK_DIR/console-dev-setup.json` and use the console dev command and console dev URL.
+
 Invoke `visual_captures` sub-recipe with:
 - `work_dir`: the `$WORK_DIR` path created in Phase 1 (same path used for baseline)
 - `output_dir`: `$WORK_DIR/post-migration-N` (N = fix round, starting at 0)
 - `project_path`: path to the project
-- `dev_command`: dev server command
+- `dev_command`: console dev command if console plugin, otherwise dev server command
+- `dev_url`: console dev URL if console plugin, otherwise omit
 
 The manifest at `$WORK_DIR/manifest.md` already exists, so it will reuse it and only capture screenshots.
 
@@ -114,7 +120,8 @@ If unchecked issues remain, invoke `visual_fix` sub-recipe with:
 - `work_dir`: the `$WORK_DIR` path created in Phase 1
 - `post_migration_dir`: `$WORK_DIR/post-migration-N`
 - `project_path`: path to the project
-- `dev_command`: dev server command
+- `dev_command`: console dev command if console plugin, otherwise dev server command
+- `dev_url`: console dev URL if console plugin, otherwise omit
 - `migration_context`: a brief 2-3 line summary of the migration so far — include what technologies are involved and what has been done (e.g., codemods applied, which issue groups are fixed, what remains)
 
 It fixes unchecked items, marks them `[x]` in the report, copies verified screenshots to the post-migration directory, and logs fixes to `$WORK_DIR/visual-fixes.md`.

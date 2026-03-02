@@ -48,7 +48,76 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
    ```
    **All subagent delegations below use this directory as the work directory.** All migration artifacts — Kantra output, status files, screenshots, manifests, and reports — must go inside `$WORK_DIR`. Never use the project directory as the work directory.
 
-5. **Check target technology specific guidance**: Read `targets/<target>.md` if it exists. Follow pre-migration steps before Phase 2.
+5. **Console plugin cluster setup** (only if the project was detected as an OpenShift Console dynamic plugin in step 2):
+
+   Delegate to `kind-cluster` subagent with the desired cluster name. Save the returned JSON to `$WORK_DIR/cluster-credentials.json`.
+
+   Determine the console plugin dev command:
+   - Read cluster credentials for `api_server` and `token`
+   - Detect plugin name from `package.json` `name` field
+   - Check for console start script (`ci/start-console.sh` or `console` script in `package.json`)
+
+   **CRITICAL — `npm start` and webpack dev servers are long-running processes that NEVER exit on their own.**
+   They start an HTTP server and keep running indefinitely to serve requests. **If you run them without `&`, your session WILL hang indefinitely and never recover.**
+
+   WRONG — will hang forever:
+   ```bash
+   cd <project_path> && npm start
+   ```
+
+   RIGHT — backgrounds the process:
+   ```bash
+   cd <project_path> && npm start &
+   NPM_PID=$!
+   ```
+
+   You MUST:
+   1. **Always run them in the background** (append `&`) and capture the PID (`$!`). **Never run them in the foreground.**
+   2. **Poll for readiness** after starting: check the server URL with `curl` every 2 seconds for up to 120 seconds. Only proceed after the server responds. **For the webpack dev server (port 9001), an HTTP 404 response (`Cannot GET /`, curl exit code 22) is expected and acceptable** — it means the server is running but the console bridge has not connected yet. Do NOT require HTTP 200 from the webpack dev server.
+   3. **Do not run the dev command here to test it.** Just construct and save it. The subagents (`visual-captures`, `visual-fix`) will handle execution with proper background management and readiness polling.
+   4. **When running multi-line scripts via `bash -c`, every command must be separated by semicolons (`;`) or newlines (`\n`).** Pasting a multi-line script into a single `bash -c` argument without semicolons will silently fail — commands after the first line become positional parameters and are never executed. **Write the dev command as a shell script file** (`$WORK_DIR/start-dev.sh`) and execute it with `bash $WORK_DIR/start-dev.sh`, rather than passing a long command string to `bash -c`.
+
+   - If script exists: dev command starts the webpack dev server in the background FIRST, polls until it is listening, then runs the console script with
+     `BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT` and `BRIDGE_K8S_AUTH_BEARER_TOKEN` set from credentials. Example:
+     ```bash
+     # 1. Start webpack dev server in background (long-running, never exits)
+     cd <project_path> && npm start &
+     NPM_PID=$!
+     # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+     # The server returns HTTP 404 ("Cannot GET /") until the console bridge connects — this is expected.
+     # Accept both exit code 0 (HTTP 200) and exit code 22 (HTTP 404) as "server is ready".
+     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
+     # 3. Start console bridge in background (also long-running)
+     BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> bash ./ci/start-console.sh &
+     # 4. Poll until console bridge is ready on port 9000 (up to 120s)
+     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
+     ```
+   - If no script: dev command starts the webpack dev server in the background FIRST, polls until it is listening, then runs a generic podman console bridge:
+     ```bash
+     # 1. Start webpack dev server in background (long-running, never exits)
+     cd <project_path> && npm start &
+     NPM_PID=$!
+     # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+     # The server returns HTTP 404 ("Cannot GET /") until the console bridge connects — this is expected.
+     # Accept both exit code 0 (HTTP 200) and exit code 22 (HTTP 404) as "server is ready".
+     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
+     # 3. Start console bridge in background (also long-running)
+     podman run --rm --name=migration-console --network=host \
+       -e BRIDGE_USER_AUTH=disabled -e BRIDGE_K8S_MODE=off-cluster \
+       -e BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> \
+       -e BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS=true \
+       -e BRIDGE_K8S_AUTH=bearer-token -e BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
+       -e BRIDGE_PLUGINS=<plugin_name>=http://localhost:9001 \
+       -e BRIDGE_LISTEN=http://0.0.0.0:9000 \
+       quay.io/openshift/origin-console:latest &
+     # 4. Poll until console bridge is ready on port 9000 (up to 120s)
+     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
+     ```
+   - **Both servers must be running**: webpack dev server on port 9001 (serves plugin JS) and console bridge on port 9000 (provides the HTML shell that loads the plugin)
+   - Console dev URL is `http://localhost:9000`
+   - **Save the console dev command as a shell script file** at `$WORK_DIR/start-dev.sh` (not as a JSON string). Multi-line shell scripts with backgrounded processes, loops, and conditionals break when passed as `bash -c` arguments. Also save the URL to `$WORK_DIR/console-dev-setup.json` with a reference to the script path.
+
+6. **Check target technology specific guidance**: Look for a target-specific file in `targets/`. Match by lowercased target name without version numbers (e.g., "PatternFly 6" → `patternfly.md`, "Spring Boot 3.x" → `spring-boot.md`). **Follow ALL pre-migration steps in the target file sequentially — each step must complete before the next one starts. Do not proceed to Phase 2 until all pre-migration steps are complete.**
 
 ---
 
@@ -157,7 +226,7 @@ Run E2E/behavioral tests and complete target-specific validation.
 
 Console dynamic plugins must be tested inside an OpenShift Console to verify they load, register their extensions, and render correctly.
 
-1. **Provision cluster**: Delegate to `kind-cluster` subagent with the desired cluster name. It returns JSON with `cluster_name`, `api_server`, `console_url`, `token`, `kubeconfig_path`, `ca_cert_path`, and `context_name`. Save the returned JSON to `$WORK_DIR/cluster-credentials.json`.
+1. **Load cluster credentials**: Read `$WORK_DIR/cluster-credentials.json` (created in Phase 1). Verify cluster is still running by checking connectivity to the `api_server`. If not responsive, re-provision by delegating to `kind-cluster` subagent and update `$WORK_DIR/cluster-credentials.json`.
 
 2. **Build plugin image**: Build the plugin container image using the project's build tooling (typically `npm run build` followed by a container build). Tag it as `localhost/console-plugin:latest`.
 
@@ -247,3 +316,5 @@ Tell the user the path to the generated `report.html`.
 - **Verify each fix** - don't break existing features
 - **Document unfixable issues** after 2+ failed approaches
 - **Use all issue sources** - Kantra is just one input
+- **NEVER run dev servers in the foreground** — `npm start`, `webpack serve`, `npm run dev`, and similar dev server commands start an HTTP server that runs indefinitely and **never exits on their own**. Running them without `&` WILL hang your session indefinitely. Always: (1) run in background with `&` and capture PID (`$!`), (2) poll the server URL with `curl` every 2 seconds for up to 120 seconds until it responds, (3) only then proceed to the next step. **When polling the webpack dev server (port 9001), accept HTTP 404 (curl exit code 22) as ready** — the server returns `Cannot GET /` until the console bridge connects, which is normal.
+- **The entire dev command must run as a single bash `-c` script, not as separate commands.** When constructing the dev command, write it as one multi-line shell script. Do NOT split it into separate sequential shell invocations — backgrounded processes (`&`) and their PIDs (`$!`) are only valid within the same shell session.

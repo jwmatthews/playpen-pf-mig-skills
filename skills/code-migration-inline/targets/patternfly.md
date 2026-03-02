@@ -12,7 +12,7 @@ Pre-Migration → Phase 2 (Fix Loop) → Phase 3 (E2E Tests) → Visual Comparis
 
 ## Pre-Migration
 
-Complete BEFORE Phase 2.
+**Complete ALL of these steps BEFORE Phase 2. These steps are strictly sequential — each step must complete before the next one starts. Do not parallelize them.** The visual baseline (step 2) must capture the code in its original pre-migration state, before pf-codemods or any other tool modifies the source.
 
 ### 1. Discover UI Elements
 
@@ -81,7 +81,19 @@ Project: <project_path>
 
 ### 2. Capture Visual Baseline
 
-1. **Start application and wait** - **The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Playwright operations will fail if the server is not ready. Run dev server **in the background** (append `&` or equivalent) and capture the process ID. Extract the local URL from the server output. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load. **Do not call any `playwright-mcp` tool until both checks pass.**
+1. **Start application and wait** - **The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Playwright operations will fail if the server is not ready.
+
+   **If `IS_CONSOLE_PLUGIN=true`** (multi-stage startup): Read `$WORK_DIR/console-dev-setup.json` for the console dev command and dev URL. **Run the dev command as a foreground script** (do NOT append `&` — it manages its own background processes). The script performs these steps internally, in strict order:
+   - **Step A**: Starts the webpack dev server on port 9001 in the background
+   - **Step B**: Polls port 9001 until it responds (**HTTP 404 / curl exit code 22 is acceptable** — the server returns `Cannot GET /` before the console bridge connects)
+   - **Step C**: Starts the console bridge on port 9000 in the background — **this MUST NOT happen before Step B succeeds**
+   - **Step D**: Polls port 9000 until it responds with HTTP 200
+
+   After the script completes, verify the console dev URL (e.g., `http://localhost:9000`) is responsive. **Wait an additional 5 seconds** for JS bundles and assets to fully load.
+
+   **Otherwise** (standard app): Run the dev server command from project discovery **in the background** (append `&`), capture the process ID, and extract the local URL from the server output. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load.
+
+   **Do not call any `playwright-mcp` tool until all checks pass.**
 
 2. **Capture screenshots** - For each element in manifest, use `playwright-mcp`:
    - Navigate to page or trigger component (follow any **Setup** steps in the manifest entry)
@@ -90,7 +102,7 @@ Project: <project_path>
 
 3. **Verify** - Compare the list of `.png` files in `$WORK_DIR/baseline/` against manifest entries. Every manifest entry must have a corresponding screenshot.
 
-4. **Stop application**
+4. **Stop application**: `kill $DEV_PID` and `podman stop migration-console okd-console 2>/dev/null || true`
 
 ### 3. Run pf-codemods
 
@@ -148,7 +160,19 @@ Repeat the following loop until no unchecked issues remain. N is the fix round, 
 
 Read `$WORK_DIR/manifest.md` (already created during pre-migration).
 
-1. **Start application and wait** - **The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Run dev server **in the background** (append `&`) and capture the process ID. **Poll the URL every 2 seconds, up to 120 seconds.** After the server responds, **wait an additional 5 seconds** for JS bundles and assets. **Do not call any `playwright-mcp` tool until both checks pass.**
+1. **Start application and wait** - **The application MUST be running and fully responsive before any `playwright-mcp` interaction.**
+
+   **If `IS_CONSOLE_PLUGIN=true`** (multi-stage startup): Use the console dev command from `$WORK_DIR/console-dev-setup.json`. **Run the dev command as a foreground script** (do NOT append `&` — it manages its own background processes). The script performs these steps internally, in strict order:
+   - **Step A**: Starts the webpack dev server on port 9001 in the background
+   - **Step B**: Polls port 9001 until it responds (**HTTP 404 / curl exit code 22 is acceptable**)
+   - **Step C**: Starts the console bridge on port 9000 in the background — **this MUST NOT happen before Step B succeeds**
+   - **Step D**: Polls port 9000 until it responds with HTTP 200
+
+   After the script completes, verify the console dev URL (e.g., `http://localhost:9000`) is responsive. **Wait an additional 5 seconds** for JS bundles and assets.
+
+   **Otherwise** (standard app): Run the dev server command from project discovery **in the background** (append `&`), capture the process ID, and extract the URL from output. **Poll the URL every 2 seconds, up to 120 seconds.** After the server responds, **wait an additional 5 seconds** for JS bundles and assets.
+
+   **Do not call any `playwright-mcp` tool until all checks pass.**
 2. **Capture screenshots** - For each element in manifest, use `playwright-mcp`:
    - Navigate to page or trigger component
    - Wait for content to stabilize
@@ -234,8 +258,17 @@ Read `$WORK_DIR/status.md` to understand what migration issues have been fixed s
 
 **Start the dev server once** and keep it running for the entire fix process:
 
-1. Start the dev server **in the background** (append `&`) and capture the process ID
-2. **Poll the URL every 2 seconds, up to 120 seconds.** After the server responds, **wait an additional 5 seconds** for JS bundles and assets. **Do not call any `playwright-mcp` tool until both checks pass.**
+**If `IS_CONSOLE_PLUGIN=true`** (multi-stage startup): Use the console dev command from `$WORK_DIR/console-dev-setup.json`. **Run the dev command as a foreground script** (do NOT append `&` — it manages its own background processes). The script performs these steps internally, in strict order:
+   - **Step A**: Starts the webpack dev server on port 9001 in the background
+   - **Step B**: Polls port 9001 until it responds (**HTTP 404 / curl exit code 22 is acceptable**)
+   - **Step C**: Starts the console bridge on port 9000 in the background — **this MUST NOT happen before Step B succeeds**
+   - **Step D**: Polls port 9000 until it responds with HTTP 200
+
+After the script completes, verify the console dev URL (e.g., `http://localhost:9000`) is responsive. **Wait an additional 5 seconds** for JS bundles and assets.
+
+**Otherwise** (standard app): Start the dev server command from project discovery **in the background** (append `&`) and capture the process ID. **Poll the URL every 2 seconds, up to 120 seconds.** After the server responds, **wait an additional 5 seconds** for JS bundles and assets.
+
+**Do not call any `playwright-mcp` tool until both checks pass.**
 
 Fix unchecked issues by page/route. **The dev server stays running throughout.** After making code changes, the dev server's hot module replacement (HMR) will automatically rebuild. Wait 3-5 seconds after saving code changes for HMR to complete before taking screenshots.
 
@@ -255,7 +288,7 @@ Fix unchecked issues by page/route. **The dev server stays running throughout.**
    - Mark fixed issues as `[x]` in `$WORK_DIR/visual-diff-report.md`
    - Do not wait until all pages are done.
 
-3. **Stop the dev server** after all pages have been processed: `kill $DEV_PID`
+3. **Stop the dev server** after all pages have been processed: `kill $DEV_PID` and `podman stop migration-console okd-console 2>/dev/null || true`
 
 **Fix ALL issues (major AND minor) before completing migration.** Do not dismiss minor issues as acceptable.
 

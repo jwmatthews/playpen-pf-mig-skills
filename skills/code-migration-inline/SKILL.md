@@ -127,9 +127,104 @@ kantra analyze --input <project> --output $WORK_DIR/round-N/kantra <FLAGS>
 WORK_DIR=$(mktemp -d -t migration-$(date +%m_%d_%y_%H))
 ```
 
-### Step 5: Check Target Technology Specific Guidance
+### Step 5: Console Plugin Cluster Setup
 
-Read `targets/<target>.md` if it exists. Follow pre-migration steps before Phase 2.
+**Only perform this step if `IS_CONSOLE_PLUGIN=true` (detected in Step 2).**
+
+**5a. Prerequisites**: Verify `kubectl` and `curl` are available. If `kind` is not installed, install it:
+```bash
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+[ "$ARCH" = "x86_64" ] && ARCH="amd64"
+[ "$ARCH" = "aarch64" ] && ARCH="arm64"
+curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-${OS}-${ARCH}"
+chmod +x ./kind && mkdir -p "$HOME/.local/bin" && mv ./kind "$HOME/.local/bin/kind"
+```
+
+**5b. Create kind cluster**: Delete any existing cluster with the same name, then create one with a NodePort mapping (port 30443). Wait for the node to be Ready.
+
+**5c. Install OLM**:
+```bash
+kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/crds.yaml
+kubectl wait --for=condition=Established crd --all --timeout=60s
+kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/olm.yaml
+```
+Wait for `olm-operator`, `catalog-operator`, and `packageserver` deployments to roll out. Verify the `operatorhubio-catalog` CatalogSource is READY.
+
+**5d. Deploy OpenShift Console via OLM**: Create namespace `openshift-console`, an OperatorGroup, a ServiceAccount with cluster-admin, a `kubernetes.io/service-account-token` Secret, a ClusterServiceVersion deploying `quay.io/openshift/origin-console:latest` with `BRIDGE_K8S_MODE=off-cluster` and `BRIDGE_USER_AUTH=disabled`, and a NodePort Service on port 30443. Wait for the CSV to reach `Succeeded` and the pod to be Ready.
+
+**5e. Verify console health**: `curl -sf -o /dev/null http://localhost:30443/health`
+
+**5f. Collect credentials**: Extract `api_server`, `token`, `kubeconfig_path`, `ca_cert_path`, `context_name`, and `console_url`. Save to `$WORK_DIR/cluster-credentials.json`.
+
+**5g. Determine console plugin dev command**:
+- Read cluster credentials for `api_server` and `token`
+- Detect plugin name from `package.json` `name` field
+- Check for console start script (`ci/start-console.sh` or `console` script in `package.json`)
+
+**CRITICAL — `npm start` and webpack dev servers are long-running processes that NEVER exit on their own.**
+They start an HTTP server and keep running indefinitely to serve requests. **If you run them without `&`, your session WILL hang indefinitely and never recover.**
+
+WRONG — will hang forever:
+```bash
+cd <project_path> && npm start
+```
+
+RIGHT — backgrounds the process:
+```bash
+cd <project_path> && npm start &
+NPM_PID=$!
+```
+
+You MUST:
+1. **Always run them in the background** (append `&`) and capture the PID (`$!`). **Never run them in the foreground.**
+2. **Poll for readiness** after starting: check the server URL with `curl` every 2 seconds for up to 120 seconds. Only proceed after the server responds. **For the webpack dev server (port 9001), an HTTP 404 response (`Cannot GET /`, curl exit code 22) is expected and acceptable** — it means the server is running but the console bridge has not connected yet. Do NOT require HTTP 200 from the webpack dev server.
+3. **Do not run the dev command here to test it.** Just construct and save it. It will be executed later with proper background management and readiness polling.
+4. **When running multi-line scripts via `bash -c`, every command must be separated by semicolons (`;`) or newlines (`\n`).** Pasting a multi-line script into a single `bash -c` argument without semicolons will silently fail — commands after the first line become positional parameters and are never executed. **Write the dev command as a shell script file** (`$WORK_DIR/start-dev.sh`) and execute it with `bash $WORK_DIR/start-dev.sh`, rather than passing a long command string to `bash -c`.
+
+- If script exists: dev command starts the webpack dev server in the background FIRST, polls until it is listening, then runs the console script with
+  `BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT` and `BRIDGE_K8S_AUTH_BEARER_TOKEN` set from credentials. Example:
+  ```bash
+  # 1. Start webpack dev server in background (long-running, never exits)
+  cd <project_path> && npm start &
+  NPM_PID=$!
+  # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+  # The server returns HTTP 404 ("Cannot GET /") until the console bridge connects — this is expected.
+  # Accept both exit code 0 (HTTP 200) and exit code 22 (HTTP 404) as "server is ready".
+  for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
+  # 3. Start console bridge in background (also long-running)
+  BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> bash ./ci/start-console.sh &
+  # 4. Poll until console bridge is ready on port 9000 (up to 120s)
+  for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
+  ```
+- If no script: dev command starts the webpack dev server in the background FIRST, polls until it is listening, then runs a generic podman console bridge:
+  ```bash
+  # 1. Start webpack dev server in background (long-running, never exits)
+  cd <project_path> && npm start &
+  NPM_PID=$!
+  # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+  # The server returns HTTP 404 ("Cannot GET /") until the console bridge connects — this is expected.
+  # Accept both exit code 0 (HTTP 200) and exit code 22 (HTTP 404) as "server is ready".
+  for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
+  # 3. Start console bridge in background (also long-running)
+  podman run --rm --name=migration-console --network=host \
+    -e BRIDGE_USER_AUTH=disabled -e BRIDGE_K8S_MODE=off-cluster \
+    -e BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> \
+    -e BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS=true \
+    -e BRIDGE_K8S_AUTH=bearer-token -e BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
+    -e BRIDGE_PLUGINS=<plugin_name>=http://localhost:9001 \
+    -e BRIDGE_LISTEN=http://0.0.0.0:9000 \
+    quay.io/openshift/origin-console:latest &
+  # 4. Poll until console bridge is ready on port 9000 (up to 120s)
+  for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
+  ```
+- **Both servers must be running**: webpack dev server on port 9001 (serves plugin JS) and console bridge on port 9000 (provides the HTML shell that loads the plugin)
+- Console dev URL is `http://localhost:9000`
+- **Save the console dev command as a shell script file** at `$WORK_DIR/start-dev.sh` (not as a JSON string). Multi-line shell scripts with backgrounded processes, loops, and conditionals break when passed as `bash -c` arguments. Also save the URL to `$WORK_DIR/console-dev-setup.json` with a reference to the script path.
+
+### Step 6: Check Target Technology Specific Guidance
+
+Look for a target-specific file in `targets/`. Match by lowercased target name without version numbers (e.g., "PatternFly 6" → `patternfly.md`, "Spring Boot 3.x" → `spring-boot.md`). **Follow ALL pre-migration steps in the target file sequentially — each step must complete before the next one starts. Do not proceed to Phase 2 until all pre-migration steps are complete.**
 
 ---
 
@@ -263,35 +358,11 @@ Run E2E/behavioral tests and complete target-specific validation.
 
 Console dynamic plugins must be tested inside an OpenShift Console to verify they load, register their extensions, and render correctly.
 
-**1. Prerequisites**: Verify `kubectl` and `curl` are available. If `kind` is not installed, install it:
-```bash
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
-[ "$ARCH" = "x86_64" ] && ARCH="amd64"
-[ "$ARCH" = "aarch64" ] && ARCH="arm64"
-curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-${OS}-${ARCH}"
-chmod +x ./kind && mkdir -p "$HOME/.local/bin" && mv ./kind "$HOME/.local/bin/kind"
-```
+**1. Load cluster credentials**: Read `$WORK_DIR/cluster-credentials.json` (created in Phase 1). Verify cluster is still running by checking connectivity to the `api_server`. If not responsive, re-provision the cluster (repeat Phase 1 steps 5a-5f) and update `$WORK_DIR/cluster-credentials.json`.
 
-**2. Create kind cluster**: Delete any existing cluster with the same name, then create one with a NodePort mapping (port 30443). Wait for the node to be Ready.
+**2. Build and deploy plugin**: Build the plugin container image, load it into kind, create a Deployment + Service + `ConsolePlugin` CR in the cluster. Use existing deployment manifests if available.
 
-**3. Install OLM**:
-```bash
-kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/crds.yaml
-kubectl wait --for=condition=Established crd --all --timeout=60s
-kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/olm.yaml
-```
-Wait for `olm-operator`, `catalog-operator`, and `packageserver` deployments to roll out. Verify the `operatorhubio-catalog` CatalogSource is READY.
-
-**4. Deploy OpenShift Console via OLM**: Create namespace `openshift-console`, an OperatorGroup, a ServiceAccount with cluster-admin, a `kubernetes.io/service-account-token` Secret, a ClusterServiceVersion deploying `quay.io/openshift/origin-console:latest` with `BRIDGE_K8S_MODE=off-cluster` and `BRIDGE_USER_AUTH=disabled`, and a NodePort Service on port 30443. Wait for the CSV to reach `Succeeded` and the pod to be Ready.
-
-**5. Verify console health**: `curl -sf -o /dev/null http://localhost:30443/health`
-
-**6. Collect credentials**: Extract `api_server`, `token`, `kubeconfig_path`, `ca_cert_path`, `context_name`, and `console_url`. Save to `$WORK_DIR/cluster-credentials.json`.
-
-**7. Build and deploy plugin**: Build the plugin container image, load it into kind, create a Deployment + Service + `ConsolePlugin` CR in the cluster. Use existing deployment manifests if available.
-
-**8. Verify plugin**: Confirm the plugin appears in the console and check logs for loading errors.
+**3. Verify plugin**: Confirm the plugin appears in the console and check logs for loading errors.
 
 Log the result in `$WORK_DIR/status.md`:
 ```markdown
@@ -510,3 +581,5 @@ Tell the user the path to the generated `report.html`.
 - **Document unfixable issues** after 2+ failed approaches
 - **Use all issue sources** - Kantra is just one input
 - **Report test results concisely** - counts and failures only, not full output
+- **NEVER run dev servers in the foreground** — `npm start`, `webpack serve`, `npm run dev`, and similar dev server commands start an HTTP server that runs indefinitely and **never exits on their own**. Running them without `&` WILL hang your session indefinitely. Always: (1) run in background with `&` and capture PID (`$!`), (2) poll the server URL with `curl` every 2 seconds for up to 120 seconds until it responds, (3) only then proceed to the next step. **When polling the webpack dev server (port 9001), accept HTTP 404 (curl exit code 22) as ready** — the server returns `Cannot GET /` until the console bridge connects, which is normal.
+- **The entire dev command must run as a single bash `-c` script, not as separate commands.** When constructing the dev command, write it as one multi-line shell script. Do NOT split it into separate sequential shell invocations — backgrounded processes (`&`) and their PIDs (`$!`) are only valid within the same shell session.
