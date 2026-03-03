@@ -182,8 +182,15 @@ You MUST:
 3. **Do not run the dev command here to test it.** Just construct and save it. It will be executed later with proper background management and readiness polling.
 4. **When running multi-line scripts via `bash -c`, every command must be separated by semicolons (`;`) or newlines (`\n`).** Pasting a multi-line script into a single `bash -c` argument without semicolons will silently fail — commands after the first line become positional parameters and are never executed. **Write the dev command as a shell script file** (`$WORK_DIR/start-dev.sh`) and execute it with `bash $WORK_DIR/start-dev.sh`, rather than passing a long command string to `bash -c`.
 
-- If script exists: dev command starts the webpack dev server in the background FIRST, polls until it is listening, then runs the console script with
-  `BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT` and `BRIDGE_K8S_AUTH_BEARER_TOKEN` set from credentials. Example:
+- If script exists: **Before using it, read the script contents to determine how it starts the console bridge.** Check whether the script runs `podman run` or `docker run` with or without the `-d` (detach) flag:
+  - If the script runs the container **without `-d`** (foreground/blocking), the script itself will never exit. **You must run the script in the background** with `&` and capture its PID.
+  - If the script runs the container **with `-d`** (detached mode), the container starts in the background and the script exits on its own. **Do not background the script** with `&` — let it run to completion so any startup errors are reported.
+  - **If you cannot determine the behavior from reading the script, default to running it in the background** with `&` to avoid hanging the session.
+
+  Dev command starts the webpack dev server in the background FIRST, polls until it is listening, then runs the console script with
+  `BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT` and `BRIDGE_K8S_AUTH_BEARER_TOKEN` set from credentials.
+
+  Example (blocking script — run with `&`):
   ```bash
   # 1. Start webpack dev server in background (long-running, never exits)
   cd <project_path> && npm start &
@@ -192,8 +199,21 @@ You MUST:
   # The server returns HTTP 404 ("Cannot GET /") until the console bridge connects — this is expected.
   # Accept both exit code 0 (HTTP 200) and exit code 22 (HTTP 404) as "server is ready".
   for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
-  # 3. Start console bridge in background (also long-running)
+  # 3. Start console bridge in background (script runs container in foreground, so script itself blocks)
   BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> bash ./ci/start-console.sh &
+  # 4. Poll until console bridge is ready on port 9000 (up to 120s)
+  for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
+  ```
+
+  Example (detached script — script runs `podman run -d` and exits):
+  ```bash
+  # 1. Start webpack dev server in background (long-running, never exits)
+  cd <project_path> && npm start &
+  NPM_PID=$!
+  # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+  for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
+  # 3. Run console bridge script (it starts the container with -d and exits on its own)
+  BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> bash ./ci/start-console.sh
   # 4. Poll until console bridge is ready on port 9000 (up to 120s)
   for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
   ```
