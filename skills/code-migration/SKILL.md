@@ -198,7 +198,13 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
 
 Run initial analysis to create the fix plan:
 
-1. Run Kantra: `kantra analyze --input <project> --output $WORK_DIR/round-1/kantra --overwrite <FLAGS>`
+1. Run Kantra — **Kantra analysis can take 5-15 minutes and will exceed the shell timeout.** Always run it in the background with `nohup` and redirect output to a log file:
+   ```bash
+   nohup kantra analyze --input <project> --output $WORK_DIR/round-1/kantra --overwrite <FLAGS> > $WORK_DIR/round-1/kantra-run.log 2>&1 &
+   KANTRA_PID=$!
+   ```
+   Poll for completion: `while kill -0 $KANTRA_PID 2>/dev/null; do sleep 10; done`
+   Check `$WORK_DIR/round-1/kantra/output.yaml` exists before proceeding. If Kantra failed, check `$WORK_DIR/round-1/kantra-run.log` for errors.
 2. Parse Kantra output using the helper script:
    - Overview: `python3 scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.yaml`
    - File details: `python3 scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.yaml <file>`
@@ -249,7 +255,7 @@ Round Checklist:
 
 1. **Pick**: Select first incomplete group from status.md
 2. **Fix**: Apply all fixes for that group
-3. **Validate**: Run Kantra, build, lint, unit tests (delegate to `test-runner` subagent with the test command, specifically ask for unit tests)
+3. **Validate**: Run Kantra (in background with `nohup` as described above), build, lint, unit tests (delegate to `test-runner` subagent with the test command, specifically ask for unit tests)
 4. **Update**: Mark the group's checkbox as `[x]` in status.md and log the round. **Always keep status.md up to date** — it is the source of truth for migration progress.
 
 Append to status.md:
