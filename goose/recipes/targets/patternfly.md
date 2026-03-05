@@ -22,6 +22,8 @@ Invoke `visual_discovery` sub-recipe with:
 
 This creates `$WORK_DIR/manifest.md` with every route, interactive component, theme variant, layout mode, and UI state.
 
+**If the sub-recipe fails or returns without creating `manifest.md`**: retry once. If it fails again, create the manifest yourself by reading the project's route definitions and component files.
+
 ### 2. Capture Visual Baseline
 
 For console plugins (`IS_CONSOLE_PLUGIN=true`): read `$WORK_DIR/console-dev-setup.json` and use the console dev command as `dev_command` and the console dev URL as `dev_url`.
@@ -34,6 +36,8 @@ Invoke `visual_captures` sub-recipe with:
 - `dev_url`: console dev URL if console plugin (e.g., `http://localhost:9000`), otherwise omit
 
 This captures screenshots for every entry in the manifest and saves them to `$WORK_DIR/baseline/`.
+
+**If the sub-recipe fails or returns with missing screenshots**: start the dev server yourself using `bash $WORK_DIR/start-dev.sh`, verify it's running, then capture the missing screenshots manually using `playwright-mcp`. Stop the dev server with `bash $WORK_DIR/stop-dev.sh` when done.
 
 ### 3. Run pf-codemods
 
@@ -100,6 +104,8 @@ Invoke `visual_captures` sub-recipe with:
 
 The manifest at `$WORK_DIR/manifest.md` already exists, so it will reuse it and only capture screenshots.
 
+**If the sub-recipe fails or returns with missing screenshots**: start the dev server yourself using `bash $WORK_DIR/start-dev.sh`, capture the missing screenshots manually using `playwright-mcp`, then stop the dev server with `bash $WORK_DIR/stop-dev.sh`.
+
 **Step 2: Compare**
 
 Invoke `visual_compare` sub-recipe with:
@@ -107,6 +113,8 @@ Invoke `visual_compare` sub-recipe with:
 - `compare_dir`: `$WORK_DIR/post-migration-N`
 
 It compares `$WORK_DIR/baseline/` against the compare directory and creates or updates `$WORK_DIR/visual-diff-report.md`.
+
+**If the sub-recipe fails or returns without creating the report**: perform the comparison yourself. For each screenshot in the baseline and post-migration directories, compare file sizes and use Python/PIL to check for pixel differences. Write the results to `$WORK_DIR/visual-diff-report.md`.
 
 **Step 3: Check exit condition**
 

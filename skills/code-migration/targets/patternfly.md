@@ -22,6 +22,8 @@ Delegate to `visual-discovery` subagent with:
 
 This creates `$WORK_DIR/manifest.md` with every route, interactive component, theme variant, layout mode, and UI state.
 
+**If the subagent fails or returns without creating `manifest.md`**: retry once. If it fails again, create the manifest yourself by reading the project's route definitions and component files.
+
 ### 2. Capture Visual Baseline
 
 For console plugins (detected in Phase 1): read `$WORK_DIR/console-dev-setup.json` and use the console dev command and console dev URL.
@@ -34,6 +36,8 @@ Delegate to `visual-captures` subagent with:
 - **dev url**: console dev URL if console plugin (e.g., `http://localhost:9000`), otherwise omit
 
 This captures screenshots for every entry in the manifest and saves them to `$WORK_DIR/baseline/`.
+
+**If the subagent fails or returns with missing screenshots**: start the dev server yourself using `bash $WORK_DIR/start-dev.sh`, verify it's running, then capture the missing screenshots manually using `playwright-mcp`. Stop the dev server with `bash $WORK_DIR/stop-dev.sh` when done.
 
 ### 3. Run pf-codemods
 
@@ -78,6 +82,8 @@ Delegate to `visual-captures` subagent with:
 
 The manifest at `$WORK_DIR/manifest.md` already exists, so it will reuse it and only capture screenshots.
 
+**If the subagent fails or returns with missing screenshots**: start the dev server yourself using `bash $WORK_DIR/start-dev.sh`, capture the missing screenshots manually using `playwright-mcp`, then stop the dev server with `bash $WORK_DIR/stop-dev.sh`.
+
 **Step 2: Compare**
 
 Delegate to `visual-compare` subagent with:
@@ -85,6 +91,8 @@ Delegate to `visual-compare` subagent with:
 - **compare directory**: `$WORK_DIR/post-migration-N`
 
 It compares `$WORK_DIR/baseline/` against the compare directory and creates or updates `$WORK_DIR/visual-diff-report.md`.
+
+**If the subagent fails or returns without creating the report**: perform the comparison yourself. For each screenshot in the baseline and post-migration directories, compare file sizes and use Python/PIL to check for pixel differences. Write the results to `$WORK_DIR/visual-diff-report.md`.
 
 **Step 3: Check exit condition**
 
