@@ -393,5 +393,7 @@ Tell the user the path to the generated `report.html`.
 - **Verify each fix** - don't break existing features
 - **Document unfixable issues** after 2+ failed approaches
 - **Use all issue sources** - Kantra is just one input
+- **Never renumber, relabel, or remove groups from status.md.** Groups are numbered when the plan is created and those numbers are permanent. If a group cannot be fixed after 2+ attempts, mark it as `[!] Group N: [Name] - UNFIXABLE: [reason]` — do not delete it, reassign its number to another group, or merge it into a different group.
+- **Attempt every group.** Do not skip a group because it uses deprecated-but-functional APIs. If Kantra flags it, attempt the migration to the new API. Only classify a group as unfixable if the fix breaks the build or tests after 2+ different approaches.
 - **NEVER run dev servers directly in the shell tool** — `npm start`, `webpack serve`, `npm run dev`, and similar dev server commands are long-running and will hang the shell. **Always use `$WORK_DIR/start-dev.sh`** to start them and **`$WORK_DIR/stop-dev.sh`** to stop them. These scripts handle backgrounding, PID tracking, log redirection, port cleanup, and readiness polling internally. Never construct dev server commands inline.
 - **Before starting dev servers, always clean up leftover processes** — run `bash $WORK_DIR/stop-dev.sh` first, or at minimum `fuser -k 9001/tcp 2>/dev/null; fuser -k 9000/tcp 2>/dev/null` to avoid `EADDRINUSE` errors from previous failed runs.
