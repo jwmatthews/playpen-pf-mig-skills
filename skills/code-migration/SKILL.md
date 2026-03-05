@@ -40,7 +40,7 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
 
    Delegate to `kantra-command-builder` subagent with the path to the project, the migration goal (target technology), custom rules path (if provided), and whether to enable default rulesets.
 
-   It returns flags; you add `--input` and `--output`.
+   It returns flags; you add `--input`, `--output`, and `--overwrite`.
 
 4. **Create workspace**: Create temp directory *outside* the project:
    ```bash
@@ -147,7 +147,7 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
 
 Run initial analysis to create the fix plan:
 
-1. Run Kantra: `kantra analyze --input <project> --output $WORK_DIR/round-1/kantra <FLAGS>`
+1. Run Kantra: `kantra analyze --input <project> --output $WORK_DIR/round-1/kantra --overwrite <FLAGS>`
 2. Parse Kantra output using the helper script:
    - Overview: `python3 scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.yaml`
    - File details: `python3 scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.yaml <file>`

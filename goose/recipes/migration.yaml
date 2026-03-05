@@ -147,7 +147,7 @@ instructions: |
      - migration_goal: "{{ target_tech }}"
      {% if rules %}- custom_rules_path: "{{ rules }}"{% endif %}
 
-     The subrecipe returns ONLY the flags. You add `--input` and `--output`.
+     The subrecipe returns ONLY the flags. You add `--input`, `--output`, and `--overwrite`.
 
   4. **Create workspace**:
      If workspace_dir is provided, use it. Otherwise, create a temporary workspace directory:
@@ -256,7 +256,7 @@ instructions: |
 
   Run initial analysis to create the fix plan:
 
-  1. Run Kantra: `kantra analyze --input "{{ input_path }}" --output "$WORK_DIR/round-1/kantra" <FLAGS>`
+  1. Run Kantra: `kantra analyze --input "{{ input_path }}" --output "$WORK_DIR/round-1/kantra" --overwrite <FLAGS>`
   2. Parse Kantra output using the helper script:
      - Overview: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.yaml`
      - File details: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.yaml <file>`

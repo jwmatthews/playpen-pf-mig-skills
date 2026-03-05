@@ -35,7 +35,7 @@ prompt: |
   {% if custom_rules_path %}- **Custom rules path**: {{ custom_rules_path }}{% endif %}
   - **Enable default rulesets**: {{ enable_default_rulesets }}
 
-  **You return all flags EXCEPT `--input` and `--output`** (the main recipe adds those).
+  **You return all flags EXCEPT `--input`, `--output`, and `--overwrite`** (the main recipe adds those).
 
 instructions: |
   ## Process

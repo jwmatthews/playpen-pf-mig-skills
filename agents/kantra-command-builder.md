@@ -26,7 +26,7 @@ You are a Kantra CLI specialist. Return the correct flags for `kantra analyze` b
 - **Custom rules path** (optional)
 - **Enable default rulesets**: yes/no
 
-**You return all flags EXCEPT `--input` and `--output`** (the main agent adds those).
+**You return all flags EXCEPT `--input`, `--output`, and `--overwrite`** (the main agent adds those).
 
 ## Process
 

@@ -115,10 +115,10 @@ Construct the Kantra analyze command flags.
 --target=<migration_target>
 ```
 
-**You add `--input` and `--output`:**
+**You add `--input`, `--output`, and `--overwrite`:**
 
 ```bash
-kantra analyze --input <project> --output $WORK_DIR/round-N/kantra <FLAGS>
+kantra analyze --input <project> --output $WORK_DIR/round-N/kantra --overwrite <FLAGS>
 ```
 
 ### Step 4: Create Workspace
@@ -254,7 +254,7 @@ Look for a target-specific file in `targets/`. Match by lowercased target name w
 
 Run initial analysis to create the fix plan:
 
-1. Run Kantra: `kantra analyze --input <project> --output $WORK_DIR/round-1/kantra <FLAGS>`
+1. Run Kantra: `kantra analyze --input <project> --output $WORK_DIR/round-1/kantra --overwrite <FLAGS>`
 2. Parse Kantra output using the helper script:
    - Overview: `python3 scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.yaml`
    - File details: `python3 scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.yaml <file>`
