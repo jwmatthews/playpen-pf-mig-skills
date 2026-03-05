@@ -60,67 +60,104 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
    **CRITICAL — `npm start` and webpack dev servers are long-running processes that NEVER exit on their own.**
    They start an HTTP server and keep running indefinitely to serve requests. **If you run them without `&`, your session WILL hang indefinitely and never recover.**
 
-   WRONG — will hang forever:
-   ```bash
-   cd <project_path> && npm start
-   ```
+   You MUST construct the dev command as a **self-contained shell script** (`$WORK_DIR/start-dev.sh`) that handles cleanup, backgrounding, PID tracking, logging, and readiness polling internally. **Never run `npm start` or dev server commands directly in the shell tool** — always go through the script.
 
-   RIGHT — backgrounds the process:
-   ```bash
-   cd <project_path> && npm start &
-   NPM_PID=$!
-   ```
+   Also create a companion **`$WORK_DIR/stop-dev.sh`** script for clean shutdown.
 
-   You MUST:
-   1. **Always run them in the background** (append `&`) and capture the PID (`$!`). **Never run them in the foreground.**
-   2. **Poll for readiness** after starting: check the server URL with `curl` every 2 seconds for up to 120 seconds. Only proceed after the server responds. **For the webpack dev server (port 9001), an HTTP 404 response (`Cannot GET /`, curl exit code 22) is expected and acceptable** — it means the server is running but the console bridge has not connected yet. Do NOT require HTTP 200 from the webpack dev server.
-   3. **Do not run the dev command here to test it.** Just construct and save it. The subagents (`visual-captures`, `visual-fix`) will handle execution with proper background management and readiness polling.
-   4. **When running multi-line scripts via `bash -c`, every command must be separated by semicolons (`;`) or newlines (`\n`).** Pasting a multi-line script into a single `bash -c` argument without semicolons will silently fail — commands after the first line become positional parameters and are never executed. **Write the dev command as a shell script file** (`$WORK_DIR/start-dev.sh`) and execute it with `bash $WORK_DIR/start-dev.sh`, rather than passing a long command string to `bash -c`.
+   **Do not run the dev command here to test it.** Just construct and save it. The subagents (`visual-captures`, `visual-fix`) will handle execution.
 
    - If script exists: **Before using it, read the script contents to determine how it starts the console bridge.** Check whether the script runs `podman run` or `docker run` with or without the `-d` (detach) flag:
      - If the script runs the container **without `-d`** (foreground/blocking), the script itself will never exit. **You must run the script in the background** with `&` and capture its PID.
      - If the script runs the container **with `-d`** (detached mode), the container starts in the background and the script exits on its own. **Do not background the script** with `&` — let it run to completion so any startup errors are reported.
      - **If you cannot determine the behavior from reading the script, default to running it in the background** with `&` to avoid hanging the session.
 
-     Dev command starts the webpack dev server in the background FIRST, polls until it is listening, then runs the console script with
-     `BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT` and `BRIDGE_K8S_AUTH_BEARER_TOKEN` set from credentials.
+   #### start-dev.sh Template
 
-     Example (blocking script — run with `&`):
-     ```bash
-     # 1. Start webpack dev server in background (long-running, never exits)
-     cd <project_path> && npm start &
-     NPM_PID=$!
-     # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
-     # The server returns HTTP 404 ("Cannot GET /") until the console bridge connects — this is expected.
-     # Accept both exit code 0 (HTTP 200) and exit code 22 (HTTP 404) as "server is ready".
-     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
-     # 3. Start console bridge in background (script runs container in foreground, so script itself blocks)
-     BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> bash ./ci/start-console.sh &
-     # 4. Poll until console bridge is ready on port 9000 (up to 120s)
-     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
-     ```
+   Every `start-dev.sh` script **MUST** follow this structure. The script handles its own backgrounding — callers run it with `bash $WORK_DIR/start-dev.sh` (no `&` needed).
 
-     Example (detached script — script runs `podman run -d` and exits):
+   **Required elements:**
+   1. **Port cleanup** — kill any leftover processes on ports 9001 and 9000 from previous failed runs
+   2. **`nohup` + log redirection** — prevent shell timeout from killing the process; write output to log files
+   3. **PID files** — write PIDs to `$WORK_DIR/*.pid` for clean shutdown
+   4. **Readiness polling** — poll each port with `curl`, accepting exit code 22 (HTTP 404) for port 9001
+   5. **Exit immediately** — the script must exit after starting and verifying servers, not block
+
+   Example (blocking console script — run with `&`):
+   ```bash
+   #!/bin/bash
+   WORK_DIR=<work_dir>
+
+   # Cleanup: kill leftover processes from previous runs
+   fuser -k 9001/tcp 2>/dev/null || true
+   fuser -k 9000/tcp 2>/dev/null || true
+   podman stop migration-console okd-console 2>/dev/null || true
+   sleep 1
+
+   # 1. Start webpack dev server in background
+   cd <project_path>
+   nohup npm start > "$WORK_DIR/webpack.log" 2>&1 &
+   echo $! > "$WORK_DIR/webpack.pid"
+
+   # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+   # Accept exit code 0 (HTTP 200) or 22 (HTTP 404 — "Cannot GET /") as "ready"
+   for i in $(seq 1 60); do
+     curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?
+     [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
+     sleep 2
+   done
+
+   # 3. Start console bridge in background (blocking script)
+   BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> \
+   BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
+   nohup bash ./ci/start-console.sh > "$WORK_DIR/bridge.log" 2>&1 &
+   echo $! > "$WORK_DIR/bridge.pid"
+
+   # 4. Poll until console bridge is ready on port 9000 (up to 120s)
+   for i in $(seq 1 60); do
+     curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break
+     sleep 2
+   done
+   echo "Dev servers ready"
+   ```
+
+   Example (detached console script — runs `podman run -d` and exits):
+   ```bash
+   #!/bin/bash
+   WORK_DIR=<work_dir>
+
+   # Cleanup: kill leftover processes from previous runs
+   fuser -k 9001/tcp 2>/dev/null || true
+   fuser -k 9000/tcp 2>/dev/null || true
+   podman stop migration-console okd-console 2>/dev/null || true
+   sleep 1
+
+   # 1. Start webpack dev server in background
+   cd <project_path>
+   nohup npm start > "$WORK_DIR/webpack.log" 2>&1 &
+   echo $! > "$WORK_DIR/webpack.pid"
+
+   # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+   for i in $(seq 1 60); do
+     curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?
+     [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
+     sleep 2
+   done
+
+   # 3. Run console bridge script (starts container with -d, exits on its own)
+   BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> \
+   BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
+   bash ./ci/start-console.sh > "$WORK_DIR/bridge.log" 2>&1
+
+   # 4. Poll until console bridge is ready on port 9000 (up to 120s)
+   for i in $(seq 1 60); do
+     curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break
+     sleep 2
+   done
+   echo "Dev servers ready"
+   ```
+
+   - If no script: use the same structure but replace step 3 with a generic podman console bridge:
      ```bash
-     # 1. Start webpack dev server in background (long-running, never exits)
-     cd <project_path> && npm start &
-     NPM_PID=$!
-     # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
-     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
-     # 3. Run console bridge script (it starts the container with -d and exits on its own)
-     BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> bash ./ci/start-console.sh
-     # 4. Poll until console bridge is ready on port 9000 (up to 120s)
-     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
-     ```
-   - If no script: dev command starts the webpack dev server in the background FIRST, polls until it is listening, then runs a generic podman console bridge:
-     ```bash
-     # 1. Start webpack dev server in background (long-running, never exits)
-     cd <project_path> && npm start &
-     NPM_PID=$!
-     # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
-     # The server returns HTTP 404 ("Cannot GET /") until the console bridge connects — this is expected.
-     # Accept both exit code 0 (HTTP 200) and exit code 22 (HTTP 404) as "server is ready".
-     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?; [ $rc -eq 0 ] || [ $rc -eq 22 ] && break; sleep 2; done
      # 3. Start console bridge in background (also long-running)
      podman run --rm --name=migration-console --network=host \
        -e BRIDGE_USER_AUTH=disabled -e BRIDGE_K8S_MODE=off-cluster \
@@ -129,13 +166,27 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
        -e BRIDGE_K8S_AUTH=bearer-token -e BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
        -e BRIDGE_PLUGINS=<plugin_name>=http://localhost:9001 \
        -e BRIDGE_LISTEN=http://0.0.0.0:9000 \
-       quay.io/openshift/origin-console:latest &
-     # 4. Poll until console bridge is ready on port 9000 (up to 120s)
-     for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break; sleep 2; done
+       quay.io/openshift/origin-console:latest > "$WORK_DIR/bridge.log" 2>&1 &
+     echo $! > "$WORK_DIR/bridge.pid"
      ```
+
+   #### stop-dev.sh
+
+   Also create `$WORK_DIR/stop-dev.sh`:
+   ```bash
+   #!/bin/bash
+   WORK_DIR=<work_dir>
+   kill $(cat "$WORK_DIR/webpack.pid" 2>/dev/null) 2>/dev/null || true
+   kill $(cat "$WORK_DIR/bridge.pid" 2>/dev/null) 2>/dev/null || true
+   podman stop migration-console okd-console 2>/dev/null || true
+   fuser -k 9001/tcp 2>/dev/null || true
+   fuser -k 9000/tcp 2>/dev/null || true
+   rm -f "$WORK_DIR/webpack.pid" "$WORK_DIR/bridge.pid"
+   ```
+
    - **Both servers must be running**: webpack dev server on port 9001 (serves plugin JS) and console bridge on port 9000 (provides the HTML shell that loads the plugin)
    - Console dev URL is `http://localhost:9000`
-   - **Save the console dev command as a shell script file** at `$WORK_DIR/start-dev.sh` (not as a JSON string). Multi-line shell scripts with backgrounded processes, loops, and conditionals break when passed as `bash -c` arguments. Also save the URL to `$WORK_DIR/console-dev-setup.json` with a reference to the script path.
+   - **Save the console dev command as a shell script file** at `$WORK_DIR/start-dev.sh` (not as a JSON string). Also save the URL to `$WORK_DIR/console-dev-setup.json` with a reference to the script path.
 
 6. **Check target technology specific guidance**: Look for a target-specific file in `targets/`. Match by lowercased target name without version numbers (e.g., "PatternFly 6" → `patternfly.md`, "Spring Boot 3.x" → `spring-boot.md`). **Follow ALL pre-migration steps in the target file sequentially — each step must complete before the next one starts. Do not proceed to Phase 2 until all pre-migration steps are complete.**
 
@@ -336,5 +387,5 @@ Tell the user the path to the generated `report.html`.
 - **Verify each fix** - don't break existing features
 - **Document unfixable issues** after 2+ failed approaches
 - **Use all issue sources** - Kantra is just one input
-- **NEVER run dev servers in the foreground** — `npm start`, `webpack serve`, `npm run dev`, and similar dev server commands start an HTTP server that runs indefinitely and **never exits on their own**. Running them without `&` WILL hang your session indefinitely. Always: (1) run in background with `&` and capture PID (`$!`), (2) poll the server URL with `curl` every 2 seconds for up to 120 seconds until it responds, (3) only then proceed to the next step. **When polling the webpack dev server (port 9001), accept HTTP 404 (curl exit code 22) as ready** — the server returns `Cannot GET /` until the console bridge connects, which is normal.
-- **The entire dev command must run as a single bash `-c` script, not as separate commands.** When constructing the dev command, write it as one multi-line shell script. Do NOT split it into separate sequential shell invocations — backgrounded processes (`&`) and their PIDs (`$!`) are only valid within the same shell session.
+- **NEVER run dev servers directly in the shell tool** — `npm start`, `webpack serve`, `npm run dev`, and similar dev server commands are long-running and will hang the shell. **Always use `$WORK_DIR/start-dev.sh`** to start them and **`$WORK_DIR/stop-dev.sh`** to stop them. These scripts handle backgrounding, PID tracking, log redirection, port cleanup, and readiness polling internally. Never construct dev server commands inline.
+- **Before starting dev servers, always clean up leftover processes** — run `bash $WORK_DIR/stop-dev.sh` first, or at minimum `fuser -k 9001/tcp 2>/dev/null; fuser -k 9000/tcp 2>/dev/null` to avoid `EADDRINUSE` errors from previous failed runs.

@@ -56,40 +56,53 @@ If no unchecked issues exist, report success and stop.
 
 **If a dev URL was provided** (console plugin — multi-stage startup):
 
-The dev command is a multi-stage script that starts two servers in sequence. It manages its own background processes internally. **Do NOT append `&` to the dev command** — it already backgrounds each server process and polls each port in the correct order.
+**Before starting, check if the dev servers are already running:**
+```bash
+curl -sf -o /dev/null <dev_url> 2>/dev/null && echo "ALREADY_RUNNING" || echo "NOT_RUNNING"
+```
+If `ALREADY_RUNNING`, skip to the verification step (step 3 below).
 
-**IMPORTANT: Write the dev command to a shell script file and execute it.** Do NOT pass multi-line commands to `bash -c` — newlines are lost and the command silently breaks (backgrounded processes, PIDs, loops, and conditionals all fail). Write it to `<work_dir>/start-dev.sh` and run `bash <work_dir>/start-dev.sh`.
+If `NOT_RUNNING`, start the servers:
 
-1. **Write the dev command to a script file and run it** from the project directory. The script performs these steps internally, in strict order:
-   - **Step A**: Starts the webpack dev server on port 9001 in the background
-   - **Step B**: Polls port 9001 until it responds (**HTTP 404 / curl exit code 22 is acceptable** — the server returns `Cannot GET /` before the console bridge connects)
-   - **Step C**: Starts the console bridge on port 9000 in the background — **this MUST NOT happen before Step B succeeds**
-   - **Step D**: Polls port 9000 until it responds with HTTP 200
-2. **After the script completes**, verify the dev URL is responsive with `curl -sf`. If it fails, report the error and stop.
-3. **Wait an additional 5 seconds** for JS bundles and assets to fully load.
-4. **Do not call any `playwright-mcp` tool until all checks above pass.**
+1. **Stop any leftover processes from previous runs:**
+   ```bash
+   bash <work_dir>/stop-dev.sh 2>/dev/null || true
+   ```
+   If `stop-dev.sh` does not exist, manually clean up:
+   ```bash
+   fuser -k 9001/tcp 2>/dev/null || true
+   fuser -k 9000/tcp 2>/dev/null || true
+   podman stop migration-console okd-console 2>/dev/null || true
+   sleep 1
+   ```
+2. **Run the start script** (already created by the main agent during discovery). The script handles backgrounding, PID tracking, log redirection, and readiness polling internally — **do NOT append `&`**:
+   ```bash
+   bash <work_dir>/start-dev.sh
+   ```
+   If `start-dev.sh` does not exist, write the dev command to `<work_dir>/start-dev.sh` first, then run it.
+3. **Verify the dev URL** is responsive with `curl -sf`. If it fails, check `<work_dir>/webpack.log` and `<work_dir>/bridge.log` for errors, then report and stop.
+4. **Wait an additional 5 seconds** for JS bundles and assets to fully load.
+5. **Do not call any `playwright-mcp` tool until all checks above pass.**
 
 **Otherwise** (standard app — single dev server):
 
-**WARNING: Dev servers (`npm start`, `webpack serve`, `npm run dev`) are long-running processes that NEVER exit on their own. If you run them without `&`, your session WILL hang indefinitely and never recover. You MUST background them.**
+**WARNING: Dev servers (`npm start`, `webpack serve`, `npm run dev`) are long-running processes that NEVER exit on their own. You MUST background them.**
 
-WRONG — will hang forever:
-```bash
-cd <project_path> && npm start
-```
+**Before starting, check if the dev server is already running** by polling the expected URL. If it responds, skip startup.
 
-RIGHT — backgrounds the process:
-```bash
-cd <project_path>
-npm start &
-DEV_PID=$!
-```
-
-1. Start the dev server **in the background** (append `&`) and capture the process ID as shown above
-2. Extract the local URL from the server output (e.g., `http://localhost:3000`)
-3. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, report the error and stop.
-4. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
-5. **Do not call any `playwright-mcp` tool until both checks above pass.**
+If not running:
+1. **Clean up leftover processes:** `fuser -k <port>/tcp 2>/dev/null || true`
+2. Start the dev server **in the background** with `nohup` and redirect output to a log file:
+   ```bash
+   cd <project_path>
+   nohup <dev_command> > <work_dir>/dev-server.log 2>&1 &
+   DEV_PID=$!
+   echo $DEV_PID > <work_dir>/dev-server.pid
+   ```
+3. Extract the local URL from the server output (e.g., `http://localhost:3000`)
+4. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, check `<work_dir>/dev-server.log` for errors and stop.
+5. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
+6. **Do not call any `playwright-mcp` tool until both checks above pass.**
 
 ### 4. Fix Loop (per page)
 
@@ -122,8 +135,16 @@ Do not wait until all pages are done — update all files after every page so pr
 After all pages have been processed (or if an unrecoverable error occurs), stop the dev server:
 
 ```bash
-kill $DEV_PID
+bash <work_dir>/stop-dev.sh 2>/dev/null || true
+```
+
+If `stop-dev.sh` does not exist:
+```bash
+kill $(cat <work_dir>/webpack.pid 2>/dev/null) 2>/dev/null || true
+kill $(cat <work_dir>/dev-server.pid 2>/dev/null) 2>/dev/null || true
 podman stop migration-console okd-console 2>/dev/null || true
+fuser -k 9001/tcp 2>/dev/null || true
+fuser -k 9000/tcp 2>/dev/null || true
 ```
 
 ### 6. Fix Log Format
