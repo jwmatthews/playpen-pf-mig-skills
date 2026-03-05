@@ -3,7 +3,7 @@ title: "Code Migration"
 description: "Migrate applications between technology stacks using kantra static analysis and automated fixes."
 
 settings:
-  max_turns: 250
+  max_turns: 300
 
 # This is what runs when you start the recipe in headless mode
 prompt: |
