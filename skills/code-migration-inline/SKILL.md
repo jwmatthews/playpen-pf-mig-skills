@@ -362,7 +362,7 @@ Round Checklist:
 ```
 
 1. **Pick**: Select first incomplete group from status.md
-2. **Fix**: Apply all fixes for that group
+2. **Fix**: Apply all fixes for that group. **Before renaming any prop or API based on Kantra suggestions, verify the new name exists in the target framework's type definitions** (e.g., check the `.d.ts` files or run `tsc --noEmit`). Kantra rules may suggest renames that are not yet reflected in the installed version's types — applying them blindly will break the build.
 3. **Validate**: Run Kantra (in background with `nohup` as described above), build, lint, unit tests
 4. **Update**: Mark group done, log the round
 
