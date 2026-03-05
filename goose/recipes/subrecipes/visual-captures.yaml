@@ -2,9 +2,6 @@ version: "1.0.0"
 title: "Screenshot Capture"
 description: "Capture screenshots of a running application using an existing manifest. Requires manifest.md to already exist in the work directory."
 
-settings:
-  max_turns: 300
-
 parameters:
   - key: work_dir
     input_type: string

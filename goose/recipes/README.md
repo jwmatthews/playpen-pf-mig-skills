@@ -92,15 +92,17 @@ goose run --recipe goose/recipes/migration.yaml --render-recipe \
 
 ## Subagent Max Turns
 
-By default, subrecipes (subagents) are limited to 25 turns. For complex migrations that require more iterations, increase the limit via the `GOOSE_SUBAGENT_MAX_TURNS` environment variable:
+By default, subrecipes (subagents) are limited to 25 turns. The main recipe instructs the agent to pass `settings: {max_turns: 300}` on every subagent invocation, which overrides the default.
+
+If you need to change this globally, you can also set the `GOOSE_SUBAGENT_MAX_TURNS` environment variable:
 
 ```bash
-export GOOSE_SUBAGENT_MAX_TURNS=100
+export GOOSE_SUBAGENT_MAX_TURNS=300
 ```
 
 The precedence for max turns is:
-1. Subagent tool call override (highest)
-2. Recipe `settings.max_turns`
+1. `settings.max_turns` in the subagent tool call (highest — set by the recipe instructions)
+2. Subrecipe `settings.max_turns`
 3. `GOOSE_SUBAGENT_MAX_TURNS` environment variable
 4. Default (25 for subagents)
 

@@ -126,8 +126,10 @@ instructions: |
 
   You have access to sub-recipes to perform specialized tasks. When you need to invoke a sub-recipe, use the `subagent` tool.
   ```
-  subagent(subrecipe: "<name>", parameters: {param1: "value1"})
+  subagent(subrecipe: "<name>", parameters: {param1: "value1"}, settings: {max_turns: 300})
   ```
+
+  **Always pass `settings: {max_turns: 300}` when invoking sub-recipes.** The default is 25 turns, which is insufficient for most migration tasks. Visual sub-recipes (`visual_discovery`, `visual_captures`, `visual_compare`, `visual_fix`) in particular require many turns to start dev servers, navigate pages, and capture/compare screenshots.
 
   ---
 
