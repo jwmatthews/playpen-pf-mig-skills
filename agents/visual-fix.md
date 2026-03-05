@@ -54,6 +54,8 @@ If no unchecked issues exist, report success and stop.
 
 **The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Start the dev server **once** and keep it running for the entire fix loop.
 
+**IMPORTANT: Do NOT attempt to start dev servers manually.** Never run `npm start`, `npx webpack serve`, or any other dev server command directly. The `start-dev.sh` script created by the main agent handles all startup logic. If `start-dev.sh` fails, report the error and stop — do not try to work around it.
+
 **If a dev URL was provided** (console plugin — multi-stage startup):
 
 **Before starting, check if the dev servers are already running:**
@@ -80,28 +82,27 @@ If `NOT_RUNNING`, start the servers:
    bash <work_dir>/start-dev.sh
    ```
    If `start-dev.sh` does not exist, write the dev command to `<work_dir>/start-dev.sh` first, then run it.
-3. **Verify the dev URL** is responsive with `curl -sf`. If it fails, check `<work_dir>/webpack.log` and `<work_dir>/bridge.log` for errors, then report and stop.
+3. **Verify the dev URL** is responsive with `curl -sf`. If it fails, check `<work_dir>/webpack.log` and `<work_dir>/bridge.log` for errors, then **report the error and stop. Do not attempt alternative startup commands.**
 4. **Wait an additional 5 seconds** for JS bundles and assets to fully load.
 5. **Do not call any `playwright-mcp` tool until all checks above pass.**
 
 **Otherwise** (standard app — single dev server):
 
-**WARNING: Dev servers (`npm start`, `webpack serve`, `npm run dev`) are long-running processes that NEVER exit on their own. You MUST background them.**
-
 **Before starting, check if the dev server is already running** by polling the expected URL. If it responds, skip startup.
 
 If not running:
-1. **Clean up leftover processes:** `fuser -k <port>/tcp 2>/dev/null || true`
-2. Start the dev server **in the background** with `nohup` and redirect output to a log file:
+1. **Stop any leftover processes from previous runs:**
    ```bash
-   cd <project_path>
-   nohup <dev_command> > <work_dir>/dev-server.log 2>&1 &
-   DEV_PID=$!
-   echo $DEV_PID > <work_dir>/dev-server.pid
+   bash <work_dir>/stop-dev.sh 2>/dev/null || true
    ```
-3. Extract the local URL from the server output (e.g., `http://localhost:3000`)
-4. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, check `<work_dir>/dev-server.log` for errors and stop.
-5. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
+   If `stop-dev.sh` does not exist: `fuser -k <port>/tcp 2>/dev/null || true`
+2. **Run the start script:**
+   ```bash
+   bash <work_dir>/start-dev.sh
+   ```
+   If `start-dev.sh` does not exist, write the dev command to `<work_dir>/start-dev.sh` first, then run it.
+3. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, check `<work_dir>/dev-server.log` for errors and **report the error and stop. Do not attempt alternative startup commands.**
+4. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
 6. **Do not call any `playwright-mcp` tool until both checks above pass.**
 
 ### 4. Fix Loop (per page)
