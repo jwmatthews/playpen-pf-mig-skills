@@ -301,6 +301,21 @@ Look for a target-specific file in `targets/`. Match by lowercased target name w
 
 ## Phase 2: Fix Loop
 
+### Establish Test Baseline
+
+**Before making any code changes, run the full test suite to record pre-existing failures.** Record results in `$WORK_DIR/status.md`:
+
+```markdown
+## Test Baseline
+
+- Total: [count]
+- Passing: [count]
+- Pre-existing failures:
+  - [test name]: [brief reason] (NOT migration-related)
+```
+
+**Pre-existing failures do not count against the exit criteria.** The exit check is: "no NEW test failures introduced by the migration." Compare test results against this baseline, not against zero failures.
+
 ### First Round Only
 
 Run initial analysis to create the fix plan:
@@ -387,9 +402,9 @@ After each round, check:
 | Condition | Done? |
 |-----------|-------|
 | All groups complete | ☐ |
-| Kantra: 0 issues | ☐ |
+| Kantra: 0 real issues (false positives documented in status.md) | ☐ |
 | Build: passes | ☐ |
-| Unit tests: pass | ☐ |
+| Unit tests: no new failures vs baseline | ☐ |
 
 - **Any unchecked** → Continue loop (next group)
 - **All checked** → Proceed to Phase 3
@@ -457,10 +472,10 @@ Log the result in `$WORK_DIR/status.md`:
 
 All must be checked:
 
-- [ ] Kantra: 0 issues
+- [ ] Kantra: 0 real issues (false positives documented)
 - [ ] Build: passes
-- [ ] Unit tests: pass
-- [ ] E2E tests: pass
+- [ ] Unit tests: no new failures vs baseline
+- [ ] E2E tests: pass (or no new failures vs baseline)
 - [ ] Target-specific validation complete
 - [ ] Console plugin loads in cluster (if `IS_CONSOLE_PLUGIN=true`)
 

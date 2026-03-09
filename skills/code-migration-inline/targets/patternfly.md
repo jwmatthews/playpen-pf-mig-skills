@@ -106,9 +106,30 @@ Project: <project_path>
 
 ### 3. Run pf-codemods
 
+**Back up ESLint configuration before running codemods** — pf-codemods can corrupt ESLint config files by serializing JavaScript constructor functions as string literals (e.g., `"function Object() { [native code] }"`).
+
 ```bash
+# Back up ESLint config (try common config file names)
+for f in .eslintrc.json .eslintrc.js .eslintrc.cjs .eslintrc .eslintrc.yaml .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.cjs; do
+  [ -f "$f" ] && cp "$f" "$f.pre-codemods-backup"
+done
+
 npx @patternfly/pf-codemods@latest <project_path> --v6 --fix
 ```
+
+**After running pf-codemods, immediately:**
+
+1. **Check ESLint config integrity** — if linting fails with config parsing errors, restore the backup:
+   ```bash
+   npx eslint --print-config . > /dev/null 2>&1 || {
+     echo "ESLint config corrupted by pf-codemods, restoring backup"
+     for f in .eslintrc.json .eslintrc.js .eslintrc.cjs .eslintrc .eslintrc.yaml .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.cjs; do
+       [ -f "$f.pre-codemods-backup" ] && cp "$f.pre-codemods-backup" "$f"
+     done
+   }
+   ```
+2. **Fix formatting** — pf-codemods introduces tab/space inconsistencies: `npx prettier --write <project_path>`
+3. **Consolidate imports** — pf-codemods creates duplicate import lines from the same package: run `npx eslint --fix .` if the project's ESLint config includes import sorting/merging rules
 
 This auto-fixes many PF5→PF6 issues. Some will still need manual fixes.
 
@@ -121,6 +142,25 @@ Verify build passes after upgrade. Address any obvious issues with the build bef
 ---
 
 ## During Migration
+
+### Known Kantra False Positives for PF6
+
+The following Kantra rules produce false positives for PF6 6.x. **Do not create fix groups for these — verify once against the installed type definitions and document as false positives in status.md.**
+
+| Kantra Rule Pattern | Why False Positive |
+|---|---|
+| `header=` → `masthead=` | Matches ANY `header` JSX prop, not just `Page.header` |
+| Deep import path restructuring | PF6 barrel imports from `@patternfly/react-core` work correctly |
+| `isOpen` → `open` | PF6 Select/Dropdown/Popover still use `isOpen` |
+| `isDisabled` → `disabled` | PF6 TextInput/Button/Select still use `isDisabled` |
+| `isExpanded` → `expanded` | PF6 ExpandableSection/MenuToggle still use `isExpanded` |
+| `isSelected` removal | PF6 MenuItem/SelectOption still use `isSelected` |
+| `isActive` → `active` | PF6 NavItem still uses `isActive` |
+| `spaceItems` removal | PF6 Flex still supports `spaceItems` |
+| `ButtonVariant.link` → `plain` | PF6 still has `link` variant |
+| `alignRight` → `alignEnd` | PF6 FlexItem `align` still accepts `alignRight` |
+
+**When analyzing Kantra output, first cross-reference against this table. Skip matching rules.** For rules not in this table, verify against the installed PF6 type definitions (`node_modules/@patternfly/react-core/dist/dynamic/**/*.d.ts`) before creating a fix group.
 
 ### Fix Strategy
 
@@ -136,6 +176,19 @@ Avoid:
 - Suppressing warnings without fixing
 - Using `// @ts-ignore` on deprecated props
 - Creating wrappers that preserve old APIs
+- **Using `sed` for import statement modifications** — imports span multiple lines with complex formatting and `sed` frequently produces broken syntax. Use direct file editing instead.
+
+### CSS Variable Migration
+
+In addition to CSS class name prefixes (`pf-v5-c-*` → `pf-v6-c-*`), also update **CSS custom property overrides**:
+- `--pf-v5-chart-*` → `--pf-v6-chart-*`
+- `--pf-v5-global-*` → check if migrated to `--pf-t-*` design tokens
+
+**Search all `.scss`, `.css`, and `.less` files for `pf-v5` references after migration.** These are silent failures — the old variable names compile without errors but have no effect at runtime.
+
+```bash
+grep -r "pf-v5" --include="*.scss" --include="*.css" --include="*.less" <project_path>
+```
 
 ### Typical Group Order
 
@@ -144,7 +197,7 @@ Adapt based on your findings:
 1. **Import paths** - Fix module imports first
 2. **Component API changes** - Removed/renamed props
 3. **Deprecated API replacements** - Old patterns → new
-4. **CSS/Styling** - Class names, design tokens
+4. **CSS/Styling** - Class names, design tokens, CSS custom properties
 
 ---
 

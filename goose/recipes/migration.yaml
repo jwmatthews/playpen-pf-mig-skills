@@ -305,11 +305,27 @@ instructions: |
 
   ## Phase 2: Fix Loop
 
+  ### Establish Test Baseline
+
+  **Before making any code changes, run the full test suite to record pre-existing failures.** Record results in `$WORK_DIR/status.md`:
+
+  ```markdown
+  ## Test Baseline
+
+  - Total: [count]
+  - Passing: [count]
+  - Pre-existing failures:
+    - [test name]: [brief reason] (NOT migration-related)
+  ```
+
+  **Pre-existing failures do not count against the exit criteria.** The exit check is: "no NEW test failures introduced by the migration." Compare test results against this baseline, not against zero failures.
+
   ### First Round Only
 
   Run initial analysis to create the fix plan:
 
   1. Run Kantra — **Kantra analysis can take 5-15 minutes and will exceed the shell timeout.** Always run it in the background with `nohup` and redirect output to a log file:
+     **Always include `--overwrite`** to handle re-runs. **Use `round-N`** (current round number) in the output path to keep results separate:
      ```bash
      nohup kantra analyze --input "{{ input_path }}" --output "$WORK_DIR/round-1/kantra" --overwrite <FLAGS> > "$WORK_DIR/round-1/kantra-run.log" 2>&1 &
      KANTRA_PID=$!
@@ -320,7 +336,7 @@ instructions: |
      while kill -0 $KANTRA_PID 2>/dev/null; do sleep 10; done
      wait $KANTRA_PID && echo "Kantra finished successfully" || echo "Kantra failed with exit code $?"
      ```
-     Check `$WORK_DIR/round-1/kantra/output.yaml` exists before proceeding. If Kantra failed, check `$WORK_DIR/round-1/kantra-run.log` for errors.
+     Check `$WORK_DIR/round-N/kantra/output.yaml` exists before proceeding. If Kantra failed, check `$WORK_DIR/round-N/kantra-run.log` for errors.
   2. Parse Kantra output using the helper script:
      - Overview: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.yaml`
      - File details: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.yaml <file>`
@@ -390,9 +406,9 @@ instructions: |
   | Condition | Done? |
   |-----------|-------|
   | All groups complete | ☐ |
-  | Kantra: 0 issues | ☐ |
+  | Kantra: 0 real issues (false positives documented in status.md) | ☐ |
   | Build: passes | ☐ |
-  | Unit tests: pass | ☐ |
+  | Unit tests: no new failures vs baseline | ☐ |
 
   - **Any unchecked** → Continue loop (next group)
   - **All checked** → Proceed to Phase 3
@@ -461,10 +477,10 @@ instructions: |
 
   All must be checked:
 
-  - [ ] Kantra: 0 issues
+  - [ ] Kantra: 0 real issues (false positives documented)
   - [ ] Build: passes
-  - [ ] Unit tests: pass
-  - [ ] E2E tests: pass
+  - [ ] Unit tests: no new failures vs baseline
+  - [ ] E2E tests: pass (or no new failures vs baseline)
   - [ ] Target-specific validation complete
   - [ ] Console plugin loads in cluster (if `IS_CONSOLE_PLUGIN=true`)
 
