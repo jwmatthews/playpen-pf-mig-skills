@@ -43,7 +43,7 @@ Read `<work_dir>/manifest.md` to get the full list of elements to capture. **Eve
 
 **The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Playwright operations will fail if the server is not ready.
 
-**IMPORTANT: Do NOT attempt to start dev servers manually.** Never run `npm start`, `npx webpack serve`, or any other dev server command directly. The `start-dev.sh` script created by the main agent handles all startup logic. If `start-dev.sh` fails, report the error and stop — do not try to work around it.
+**IMPORTANT: Do NOT attempt to start dev servers manually.** Never run `npm start`, `npx webpack serve`, or any other dev server command directly. The `start-dev.sh` script created by the main agent handles all startup logic. **If `start-dev.sh` does not exist, report the error and stop** — the main agent must create it during Phase 1 discovery.
 
 **If a dev URL was provided** (console plugin — multi-stage startup):
 
@@ -59,18 +59,18 @@ If `NOT_RUNNING`, start the servers:
    ```bash
    bash <work_dir>/stop-dev.sh 2>/dev/null || true
    ```
-   If `stop-dev.sh` does not exist, manually clean up:
+   If `stop-dev.sh` does not exist, use `fuser` to kill processes on the relevant ports. Note that the dev server may be containerized (e.g., via podman or docker) — check for running containers on those ports as well:
    ```bash
    fuser -k 9001/tcp 2>/dev/null || true
    fuser -k 9000/tcp 2>/dev/null || true
-   podman stop migration-console okd-console 2>/dev/null || true
+   # If the dev server uses containers, stop them too:
+   podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
    sleep 1
    ```
 2. **Run the start script** (already created by the main agent during discovery). The script handles backgrounding, PID tracking, log redirection, and readiness polling internally — **do NOT append `&`**:
    ```bash
    bash <work_dir>/start-dev.sh
    ```
-   If `start-dev.sh` does not exist, write the dev command to `<work_dir>/start-dev.sh` first, then run it.
 3. **Verify the dev URL** is responsive with `curl -sf`. If it fails, check `<work_dir>/webpack.log` and `<work_dir>/bridge.log` for errors, then **report the error and stop. Do not attempt alternative startup commands.**
 4. **Wait an additional 5 seconds** for JS bundles and assets to fully load.
 5. **Do not call any `playwright-mcp` tool until all checks above pass.**
@@ -84,15 +84,14 @@ If not running:
    ```bash
    bash <work_dir>/stop-dev.sh 2>/dev/null || true
    ```
-   If `stop-dev.sh` does not exist: `fuser -k <port>/tcp 2>/dev/null || true`
+   If `stop-dev.sh` does not exist, use `fuser` to kill processes on the expected port: `fuser -k <port>/tcp 2>/dev/null || true`
 2. **Run the start script:**
    ```bash
    bash <work_dir>/start-dev.sh
    ```
-   If `start-dev.sh` does not exist, write the dev command to `<work_dir>/start-dev.sh` first, then run it.
 3. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, check `<work_dir>/dev-server.log` for errors and **report the error and stop. Do not attempt alternative startup commands.**
 4. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
-6. **Do not call any `playwright-mcp` tool until both checks above pass.**
+5. **Do not call any `playwright-mcp` tool until both checks above pass.**
 
 ### 3. Capture Screenshots
 
@@ -121,13 +120,14 @@ After all captures, compare the list of `.png` files in `<output_dir>` against t
 bash <work_dir>/stop-dev.sh 2>/dev/null || true
 ```
 
-If `stop-dev.sh` does not exist, clean up manually:
+If `stop-dev.sh` does not exist, clean up by killing processes on the relevant ports. Note that the dev server may be a containerized service — check for running containers as well:
 ```bash
 kill $(cat <work_dir>/webpack.pid 2>/dev/null) 2>/dev/null || true
 kill $(cat <work_dir>/dev-server.pid 2>/dev/null) 2>/dev/null || true
-podman stop migration-console okd-console 2>/dev/null || true
 fuser -k 9001/tcp 2>/dev/null || true
 fuser -k 9000/tcp 2>/dev/null || true
+# If the dev server uses containers, stop them too:
+podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
 ```
 
 ## Output

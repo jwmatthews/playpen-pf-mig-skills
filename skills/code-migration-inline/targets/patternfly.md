@@ -102,7 +102,7 @@ Project: <project_path>
 
 3. **Verify** - Compare the list of `.png` files in `$WORK_DIR/baseline/` against manifest entries. Every manifest entry must have a corresponding screenshot.
 
-4. **Stop application**: `kill $DEV_PID` and `podman stop migration-console okd-console 2>/dev/null || true`
+4. **Stop application**: `kill $DEV_PID` and `podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true`
 
 ### 3. Run pf-codemods
 
@@ -341,7 +341,7 @@ Fix unchecked issues by page/route. **The dev server stays running throughout.**
    - Mark fixed issues as `[x]` in `$WORK_DIR/visual-diff-report.md`
    - Do not wait until all pages are done.
 
-3. **Stop the dev server** after all pages have been processed: `kill $DEV_PID` and `podman stop migration-console okd-console 2>/dev/null || true`
+3. **Stop the dev server** after all pages have been processed: `kill $DEV_PID` and `podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true`
 
 **Fix ALL issues (major AND minor) before completing migration.** Do not dismiss minor issues as acceptable.
 

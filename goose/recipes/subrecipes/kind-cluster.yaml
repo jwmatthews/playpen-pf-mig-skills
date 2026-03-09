@@ -321,6 +321,16 @@ instructions: |
     kubectl logs -l app=openshift-console -n openshift-console --tail=50
 
   ──────────────────────────────────────────────────────────────────────
+  ERROR HANDLING
+  ──────────────────────────────────────────────────────────────────────
+  **If any step fails, report the failure clearly.** Include:
+  - Which step failed (step number and name)
+  - The exact error message or command output
+  - Any diagnostic information (pod logs, event output)
+
+  Do not silently continue past a failed step.
+
+  ──────────────────────────────────────────────────────────────────────
   STEP 6 — Collect Authentication Coordinates
   ──────────────────────────────────────────────────────────────────────
   Gather the following values and return them as the structured JSON

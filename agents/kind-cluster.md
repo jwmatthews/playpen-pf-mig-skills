@@ -78,12 +78,22 @@ Gather and return all of these values:
 - **ca_cert_path**: decoded CA certificate written to `$HOME/.kube/kind-<name>-ca.crt`
 - **context_name**: `kind-<name>`
 
+## Error Handling
+
+**If any step fails, report the failure clearly.** Include:
+- Which step failed (step number and name)
+- The exact error message or command output
+- Any diagnostic information (pod logs, event output) that could help debug the issue
+
+Do not silently continue past a failed step. The main agent needs to know whether the cluster is usable.
+
 ## Output Format
 
-Return a JSON object with all fields above. Example:
+Return a JSON object with all fields above plus a `status` field. Example (success):
 
 ```json
 {
+  "status": "success",
   "cluster_name": "goose-console",
   "api_server": "https://127.0.0.1:PORT",
   "kubeconfig_path": "/home/user/.kube/config",
@@ -92,5 +102,16 @@ Return a JSON object with all fields above. Example:
   "token": "<bearer-token>",
   "ca_cert_path": "/home/user/.kube/kind-goose-console-ca.crt",
   "context_name": "kind-goose-console"
+}
+```
+
+Example (failure):
+
+```json
+{
+  "status": "failed",
+  "failed_step": "Step 4 — Deploy OpenShift Console via OLM",
+  "error": "CSV did not reach Succeeded phase within 180s",
+  "diagnostics": "Pod openshift-console-xyz is in CrashLoopBackOff: ..."
 }
 ```

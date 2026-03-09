@@ -90,7 +90,7 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
    # Cleanup: kill leftover processes from previous runs
    fuser -k 9001/tcp 2>/dev/null || true
    fuser -k 9000/tcp 2>/dev/null || true
-   podman stop migration-console okd-console 2>/dev/null || true
+   podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
    sleep 1
 
    # 1. Start webpack dev server in background
@@ -128,7 +128,7 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
    # Cleanup: kill leftover processes from previous runs
    fuser -k 9001/tcp 2>/dev/null || true
    fuser -k 9000/tcp 2>/dev/null || true
-   podman stop migration-console okd-console 2>/dev/null || true
+   podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
    sleep 1
 
    # 1. Start webpack dev server in background
@@ -178,7 +178,7 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
    WORK_DIR=<work_dir>
    kill $(cat "$WORK_DIR/webpack.pid" 2>/dev/null) 2>/dev/null || true
    kill $(cat "$WORK_DIR/bridge.pid" 2>/dev/null) 2>/dev/null || true
-   podman stop migration-console okd-console 2>/dev/null || true
+   podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
    fuser -k 9001/tcp 2>/dev/null || true
    fuser -k 9000/tcp 2>/dev/null || true
    rm -f "$WORK_DIR/webpack.pid" "$WORK_DIR/bridge.pid"
