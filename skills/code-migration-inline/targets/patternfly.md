@@ -145,7 +145,7 @@ Verify build passes after upgrade. Address any obvious issues with the build bef
 
 ### Known Kantra False Positives for PF6
 
-The following Kantra rules produce false positives for PF6 6.x. **Do not create fix groups for these — verify once against the installed type definitions and document as false positives in status.md.**
+The following Kantra rules produce false positives for PF6 6.x. **Do not create fix groups for these. Do not re-verify them against type definitions — they have already been verified. Simply list them in status.md as false positives and move on.**
 
 | Kantra Rule Pattern | Why False Positive |
 |---|---|
@@ -157,10 +157,16 @@ The following Kantra rules produce false positives for PF6 6.x. **Do not create 
 | `isSelected` removal | PF6 MenuItem/SelectOption still use `isSelected` |
 | `isActive` → `active` | PF6 NavItem still uses `isActive` |
 | `spaceItems` removal | PF6 Flex still supports `spaceItems` |
+| `spacer` → `gap` | PF6 Flex/FlexItem still supports `spacer` (both `spacer` and `gap` work) |
 | `ButtonVariant.link` → `plain` | PF6 still has `link` variant |
+| `ButtonVariant.control` → `plain` | PF6 still has `control` variant |
 | `alignRight` → `alignEnd` | PF6 FlexItem `align` still accepts `alignRight` |
+| Modal `title` → `titleText` | Matches `title` on `ModalHeader` (the correct new API), not deprecated `Modal.title` |
+| `ErrorState` prop renames | Often a custom project component, not PF's `ErrorState` from `react-component-groups` |
+| `CardHeader selectableActions` | Often already using the correct PF6 `selectableActions` object API |
+| `ToolbarFilter chips` → `labels` | Often already migrated by pf-codemods; check actual props before creating a group |
 
-**When analyzing Kantra output, first cross-reference against this table. Skip matching rules.** For rules not in this table, verify against the installed PF6 type definitions (`node_modules/@patternfly/react-core/dist/dynamic/**/*.d.ts`) before creating a fix group.
+**When analyzing Kantra output, first cross-reference each rule against this table. If a rule matches, skip it immediately — do not verify against type definitions.** Only verify rules NOT in this table against the installed PF6 type definitions (`node_modules/@patternfly/react-core/dist/dynamic/**/*.d.ts`) before creating a fix group.
 
 ### Fix Strategy
 
@@ -184,11 +190,33 @@ In addition to CSS class name prefixes (`pf-v5-c-*` → `pf-v6-c-*`), also updat
 - `--pf-v5-chart-*` → `--pf-v6-chart-*`
 - `--pf-v5-global-*` → check if migrated to `--pf-t-*` design tokens
 
-**Search all `.scss`, `.css`, and `.less` files for `pf-v5` references after migration.** These are silent failures — the old variable names compile without errors but have no effect at runtime.
+**Search all `.scss`, `.css`, `.less`, `.ts`, and `.tsx` files for `pf-v5` references after migration.** CSS variable references are silent failures — the old variable names compile without errors but have no effect at runtime. Test files (e.g., Playwright page objects) often contain `pf-v5-c-*` CSS selectors that also need updating.
 
 ```bash
-grep -r "pf-v5" --include="*.scss" --include="*.css" --include="*.less" <project_path>
+grep -r "pf-v5" --include="*.scss" --include="*.css" --include="*.less" --include="*.ts" --include="*.tsx" <project_path>
 ```
+
+### Deprecated Modal with Composable Children
+
+When using the deprecated `Modal` from `@patternfly/react-core/deprecated` alongside composable children (`ModalHeader`, `ModalBody`, `ModalFooter` from `@patternfly/react-core`), **you must add `hasNoBodyWrapper` to the deprecated `<Modal>`**. Without it, the deprecated Modal wraps all children in an extra `ModalBoxBody` div, causing ~60px vertical layout shifts and double-wrapped body content.
+
+```tsx
+// WRONG — causes layout shift
+<Modal isOpen onClose={closeModal} variant={ModalVariant.small}>
+  <ModalHeader title="My Title" />
+  <ModalBody>content</ModalBody>
+  <ModalFooter>buttons</ModalFooter>
+</Modal>
+
+// CORRECT — hasNoBodyWrapper prevents double wrapping
+<Modal isOpen onClose={closeModal} variant={ModalVariant.small} hasNoBodyWrapper>
+  <ModalHeader title="My Title" />
+  <ModalBody>content</ModalBody>
+  <ModalFooter>buttons</ModalFooter>
+</Modal>
+```
+
+**Check every file** that imports `Modal` from `@patternfly/react-core/deprecated` and uses `ModalHeader`/`ModalBody`/`ModalFooter` from `@patternfly/react-core`. Add `hasNoBodyWrapper` to each one.
 
 ### Typical Group Order
 
