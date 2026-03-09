@@ -122,11 +122,13 @@ For each page:
    - If the dev server has crashed or stopped responding (verify with a quick health check), restart it and wait for readiness before continuing
    - Use `playwright-mcp` to navigate to the page, take a new screenshot, and save it to `<work_dir>/visual-fix-round-N/<name>.png`
    - Compare the new screenshot against the **baseline** screenshot to verify the issues are fixed. Do not compare against the previous post-migration screenshot.
-5. **Iterate**: If the issue persists (the new screenshot still differs from baseline), increment the round counter, try a different approach. Keep trying until fixed. If the issue cannot be fixed after 2 attempts, classify that as unfixable and move onto next issue.
+5. **Iterate**: If the issue persists (the new screenshot still differs from baseline), increment the round counter, try a different approach. Keep trying until fixed.
 6. **Update immediately** after each page — **write `visual-fixes.md` first**, before any other update, so partial progress is preserved if the agent fails midway:
    - **First**: append a brief (2-3 line) summary to `<work_dir>/visual-fixes.md` describing what was changed and why (or noting the issue was unfixable and why)
    - Copy the verified screenshot to the post-migration directory: `cp <work_dir>/visual-fix-round-N/<name>.png <post_migration_dir>/<name>.png`
    - Mark fixed issues as `[x]` in `<work_dir>/visual-diff-report.md`
+
+**You MUST NOT mark an issue `[x]` without taking a new verification screenshot that confirms the fix.** Marking issues as "not a regression" or "expected" without a code fix and verification screenshot is not allowed — the baseline is the source of truth. If you cannot fix an issue after 3 attempts, leave it as `[ ]` and note it as unfixable in `visual-fixes.md` with the reason.
 
 Do not wait until all pages are done — update all files after every page so progress is visible.
 

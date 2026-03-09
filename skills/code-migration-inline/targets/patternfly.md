@@ -270,7 +270,14 @@ Compare `$WORK_DIR/baseline/` against `$WORK_DIR/post-migration-N/`.
 - **Report every visible difference**, no matter how small. A slightly different shade, a font weight change — all are differences and must be reported.
 - **When in doubt, report it.** False positives are acceptable. Missed differences are not.
 - **You MUST visually inspect every screenshot yourself.** Do not write scripts, use PIL, ImageMagick, or any automated pixel-diffing tool as a substitute for looking at the images. You are a multimodal model — read the image files directly and describe what you see.
-- **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). Each region may have a different theme/color independently. Check each region's colors against the baseline — do not summarize the page as "all dark" or "all light."
+- **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). Each region may have different styling. Check each region's colors against the baseline — do not summarize the page as "all dark" or "all light."
+
+**Efficiency:**
+- **Load each image only once.** When comparing a pair of screenshots, read both files in a single step or back-to-back, then perform all analysis from those reads. Do not re-load the same image file multiple times for different analysis passes.
+- **Batch your reads.** If your runtime supports parallel tool calls, load multiple image pairs in parallel rather than sequentially.
+
+**Subpixel / Anti-aliasing Noise:**
+Differences where fewer than 0.5% of pixels differ **and** the maximum per-channel difference is ≤ 15 are almost certainly font anti-aliasing artifacts from the rendering engine. **Do not report these as issues.** Instead, list them in a separate "Identical (within anti-aliasing tolerance)" section at the end of the report — no checkboxes, just a note. This avoids generating dozens of unfixable items that waste time in the fix phase.
 
 First, for each manifest entry verify that **both** baseline and post-migration screenshots exist. If a post-migration screenshot is missing, report it as `❌ Major`.
 
@@ -368,6 +375,8 @@ Fix unchecked issues by page/route. **The dev server stays running throughout.**
    - Copy the verified screenshot to the post-migration directory: `cp` the screenshot to `$WORK_DIR/post-migration-N/<name>.png`
    - Mark fixed issues as `[x]` in `$WORK_DIR/visual-diff-report.md`
    - Do not wait until all pages are done.
+
+**You MUST NOT mark an issue `[x]` without taking a new verification screenshot that confirms the fix.** Marking issues as "not a regression" or "expected" without a code fix and verification screenshot is not allowed — the baseline is the source of truth. If you cannot fix an issue after 3 attempts, leave it as `[ ]` and note it as unfixable in `visual-fixes.md` with the reason.
 
 3. **Stop the dev server** after all pages have been processed: `kill $DEV_PID` and `podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true`
 

@@ -37,7 +37,16 @@ instructions: |
   - **Report every visible difference**, no matter how small. A 1px shift, a slightly different shade, a font weight change — all are differences and must be reported.
   - **When in doubt, report it.** False positives are acceptable. Missed differences are not.
   - **You MUST visually inspect every screenshot yourself.** Do not write scripts, use PIL, ImageMagick, or any automated pixel-diffing tool as a substitute for looking at the images. You are a multimodal model — read the image files directly and describe what you see. Automated tools miss structural and content differences.
-  - **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). Each region may have a different theme/color independently. Check each region's colors against the baseline — do not summarize the page as "all dark" or "all light."
+  - **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). Each region may have different styling. Check each region's colors against the baseline — do not summarize the page as "all dark" or "all light."
+
+  ### Efficiency
+
+  - **Load each image only once.** When comparing a pair of screenshots, read both files in a single step or back-to-back, then perform all analysis from those reads. Do not re-load the same image file multiple times for different analysis passes.
+  - **Batch your reads.** If your runtime supports parallel tool calls, load multiple image pairs in parallel rather than sequentially.
+
+  ### Subpixel / Anti-aliasing Noise
+
+  Differences where fewer than 0.5% of pixels differ **and** the maximum per-channel difference is ≤ 15 are almost certainly font anti-aliasing artifacts from the rendering engine. **Do not report these as issues.** Instead, list them in a separate "Identical (within anti-aliasing tolerance)" section at the end of the report — no checkboxes, just a note. This avoids generating dozens of unfixable items that waste time in the fix phase.
 
   ## Process
 

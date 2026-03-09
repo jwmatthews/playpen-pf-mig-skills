@@ -153,6 +153,8 @@ instructions: |
      - Copy the verified screenshot to the post-migration directory: `cp {{ work_dir }}/visual-fix-round-N/<name>.png {{ post_migration_dir }}/<name>.png`
      - Mark fixed issues as `[x]` in `{{ work_dir }}/visual-diff-report.md`
 
+  **You MUST NOT mark an issue `[x]` without taking a new verification screenshot that confirms the fix.** Marking issues as "not a regression" or "expected" without a code fix and verification screenshot is not allowed — the baseline is the source of truth. If you cannot fix an issue after 3 attempts, leave it as `[ ]` and note it as unfixable in `visual-fixes.md` with the reason.
+
   Do not wait until all pages are done — update all files after every page so progress is visible.
 
   ### 5. Stop Dev Server
