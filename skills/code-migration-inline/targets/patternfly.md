@@ -260,41 +260,18 @@ Compare `$WORK_DIR/baseline/` against `$WORK_DIR/post-migration-N/`.
 - **You MUST visually inspect every screenshot yourself.** Do not write scripts, use PIL, ImageMagick, or any automated pixel-diffing tool as a substitute for looking at the images. You are a multimodal model — read the image files directly and describe what you see.
 - **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). Each region may have different styling. Check each region's colors against the baseline — do not summarize the page as "all dark" or "all light."
 
-**Efficiency:**
-- **Load each image only once.** When comparing a pair of screenshots, read both files in a single step or back-to-back, then perform all analysis from those reads. Do not re-load the same image file multiple times for different analysis passes.
-- **Batch your reads.** If your runtime supports parallel tool calls, load multiple image pairs in parallel rather than sequentially.
+**Step 2a: Run pixel comparison script** to identify which screenshots have real differences:
+```bash
+python3 <scripts_dir>/compare_screenshots.py $WORK_DIR/baseline $WORK_DIR/post-migration-N > $WORK_DIR/pixel-comparison.json
+```
+Read the JSON output. Screenshots with status `identical` or `anti_aliasing_only` need no further analysis. **Only visually inspect screenshots with status `different` or `missing_post_migration`.**
 
-**Subpixel / Anti-aliasing Noise:**
-Differences where fewer than 0.5% of pixels differ **and** the maximum per-channel difference is ≤ 15 are almost certainly font anti-aliasing artifacts from the rendering engine. **Do not report these as issues.** Instead, list them in a separate "Identical (within anti-aliasing tolerance)" section at the end of the report — no checkboxes, just a note. This avoids generating dozens of unfixable items that waste time in the fix phase.
+**Step 2b: Visually inspect changed screenshots only.** For each screenshot flagged as `different`:
 
-First, for each manifest entry verify that **both** baseline and post-migration screenshots exist. If a post-migration screenshot is missing, report it as `❌ Major`.
-
-For each element in manifest where both screenshots exist:
-1. **Load both images** (baseline and post-migration)
-1a. **Verify page content matches the manifest description.** If the post-migration screenshot shows wrong content (e.g., a 404 page instead of the expected page, empty state when data was expected), report as `❌ Major`.
-2. **Describe baseline in detail**: Inventory every visible element — sections, components, text labels, icons, colors, borders, shadows, spacing, alignment, font sizes, background colors, divider lines, badge counts, hover states, scroll positions
-3. **Describe post-migration in detail**: Same inventory, independently — do not copy from the baseline description
-4. **Diff the two descriptions item by item**: Walk through every element you inventoried and compare. For each, explicitly state whether it is the same or different.
-
-**Scan for these specific difference categories:**
-
-| Category | What to look for |
-|----------|-----------------|
-| Layout | Position shifts, size changes, reflow, element reordering |
-| Spacing | Padding, margins, gaps between elements (even 1-2px) |
-| Colors | Background, text, borders, shadows, hover states, opacity |
-| Typography | Font family, size, weight, line-height, letter-spacing |
-| Borders & dividers | Thickness, style (solid/dashed), color, radius |
-| Icons | Different icon, different size, different color, missing |
-| Components | Missing, added, or replaced components |
-| Text content | Changed labels, truncation, wrapping differences |
-| Alignment | Horizontal/vertical alignment shifts |
-| Visibility | Elements present in one but hidden/absent in the other |
-
-**You MUST explicitly address EVERY category above for each element.** State "no difference" or describe the difference. Do not skip any.
-
-- List ALL differences found — one bullet per difference, with specific detail (e.g., "Card header padding changed from ~16px to ~12px", not "spacing changed")
-- Classify each difference: ⚠️ Minor (styling/spacing/color, does not break functionality) / ❌ Major (missing elements, broken layout, functional breakage)
+1. **Load both images** — baseline and post-migration — one read each
+1a. **Verify page content matches the manifest description.** If the post-migration screenshot shows wrong content (404 page, different page, empty state), report as `❌ Major`.
+2. **Describe what changed**: Use the pixel comparison `diff_regions` to focus on areas with actual differences. Describe the specific visual changes you see.
+3. **Classify each difference**: ⚠️ Minor (styling/spacing/color) / ❌ Major (missing elements, broken layout, functional breakage)
 
 **Both minor and major issues require fixes.** Do not dismiss minor issues as acceptable.
 
