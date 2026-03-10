@@ -99,7 +99,7 @@ The following Kantra rules produce false positives for PF6 6.x. **Do not create 
 | `CardHeader selectableActions` | Often already using the correct PF6 `selectableActions` object API |
 | `ToolbarFilter chips` → `labels` | Often already migrated by pf-codemods; check actual props before creating a group |
 
-**When analyzing Kantra output, first cross-reference each rule against this table. If a rule matches, skip it immediately — do not verify against type definitions.** Only verify rules NOT in this table against the installed PF6 type definitions (`node_modules/@patternfly/react-core/dist/dynamic/**/*.d.ts`) before creating a fix group.
+**These false positives are automatically removed by `filter_kantra_false_positives.py`.** Always run the filter script on Kantra output before analysis — the filtered output will only contain real issues. If you see any of the above patterns in filtered output, they were not caught by the filter; skip them manually.
 
 ### Fix Strategy
 

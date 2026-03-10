@@ -337,12 +337,17 @@ instructions: |
      wait $KANTRA_PID && echo "Kantra finished successfully" || echo "Kantra failed with exit code $?"
      ```
      Check `$WORK_DIR/round-N/kantra/output.yaml` exists before proceeding. If Kantra failed, check `$WORK_DIR/round-N/kantra-run.log` for errors.
-  2. Parse Kantra output using the helper script:
-     - Overview: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.yaml`
-     - File details: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.yaml <file>`
-  3. Run build, lint, unit tests (invoke `test_runner` for tests)
-  4. Collect ALL issues from ALL sources (see Issue Sources table)
-  5. Create `$WORK_DIR/status.md` using the template below
+  2. **Filter known false positives** before analysis — this removes rules that have been verified as false positives, so you never waste time re-checking them:
+     ```bash
+     python3 {{ recipe_dir }}/scripts/filter_kantra_false_positives.py $WORK_DIR/round-1/kantra/output.yaml
+     ```
+     This creates `output.filtered.yaml` (use this for all subsequent analysis) and `false-positives-removed.json` (log of what was removed). List the removed false positives in `$WORK_DIR/status.md` — no further verification needed.
+  3. Parse the **filtered** Kantra output using the helper script:
+     - Overview: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.filtered.yaml`
+     - File details: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.filtered.yaml <file>`
+  4. Run build, lint, unit tests (invoke `test_runner` for tests)
+  5. Collect ALL issues from ALL sources (see Issue Sources table)
+  6. Create `$WORK_DIR/status.md` using the template below
 
   ### Status Template
 
