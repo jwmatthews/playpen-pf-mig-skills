@@ -129,27 +129,15 @@ In addition to CSS class name prefixes (`pf-v5-c-*` → `pf-v6-c-*`), also updat
 grep -r "pf-v5" --include="*.scss" --include="*.css" --include="*.less" --include="*.ts" --include="*.tsx" <project_path>
 ```
 
-### Deprecated Modal with Composable Children
+### 5. Fix Deprecated Modal with Composable Children
 
-When using the deprecated `Modal` from `@patternfly/react-core/deprecated` alongside composable children (`ModalHeader`, `ModalBody`, `ModalFooter` from `@patternfly/react-core`), **you must add `hasNoBodyWrapper` to the deprecated `<Modal>`**. Without it, the deprecated Modal wraps all children in an extra `ModalBoxBody` div, causing ~60px vertical layout shifts and double-wrapped body content.
+**Run this immediately after upgrading dependencies (step 4).** pf-codemods moves `Modal` to `@patternfly/react-core/deprecated` but does not add `hasNoBodyWrapper`. Without it, the deprecated Modal wraps all children in an extra `ModalBoxBody` div, causing ~60px vertical layout shifts.
 
-```tsx
-// WRONG — causes layout shift
-<Modal isOpen onClose={closeModal} variant={ModalVariant.small}>
-  <ModalHeader title="My Title" />
-  <ModalBody>content</ModalBody>
-  <ModalFooter>buttons</ModalFooter>
-</Modal>
-
-// CORRECT — hasNoBodyWrapper prevents double wrapping
-<Modal isOpen onClose={closeModal} variant={ModalVariant.small} hasNoBodyWrapper>
-  <ModalHeader title="My Title" />
-  <ModalBody>content</ModalBody>
-  <ModalFooter>buttons</ModalFooter>
-</Modal>
+```bash
+python3 <recipe_dir>/scripts/fix_deprecated_modal_wrapper.py <project_path>
 ```
 
-**Check every file** that imports `Modal` from `@patternfly/react-core/deprecated` and uses `ModalHeader`/`ModalBody`/`ModalFooter` from `@patternfly/react-core`. Add `hasNoBodyWrapper` to each one.
+This automatically finds all `.tsx`/`.jsx` files that import `Modal` from `@patternfly/react-core/deprecated` with composable children (`ModalHeader`/`ModalBody`/`ModalFooter`) and adds `hasNoBodyWrapper` to each `<Modal>` tag. Review the JSON output to see which files were fixed.
 
 ### Typical Group Order
 
