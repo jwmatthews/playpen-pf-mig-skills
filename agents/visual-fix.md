@@ -26,9 +26,8 @@ Assume user confirmation for all actions. Do not prompt for user input.
 - **Work directory**: contains `baseline/`, `manifest.md`, and `visual-diff-report.md`
 - **Post-migration directory**: the current post-migration screenshot directory (e.g., `<work_dir>/post-migration`)
 - **Project path**: path to the project source code
-- **Dev command**: command to start the dev server
 - **Migration context**: brief 2-3 line summary of the ongoing migration — what technologies are involved and what has been done so far
-- **Dev URL** (optional): pre-determined URL to use instead of extracting from server output (e.g., `http://localhost:9000` for console plugins)
+- **Dev URL**: the dev server URL, already verified as responsive by the main agent (e.g., `http://localhost:9000`)
 
 ## Ground Rules
 
@@ -50,59 +49,20 @@ Read `<work_dir>/visual-diff-report.md`. Collect all unchecked (`[ ]`) issues.
 
 If no unchecked issues exist, report success and stop.
 
-### 3. Start Dev Server (once)
+### 3. Verify Dev Server
 
-**The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Start the dev server **once** and keep it running for the entire fix loop.
-
-**IMPORTANT: Do NOT attempt to start dev servers manually.** Never run `npm start`, `npx webpack serve`, or any other dev server command directly. The `start-dev.sh` script created by the main agent handles all startup logic. **If `start-dev.sh` does not exist, report the error and stop** — the main agent must create it during Phase 1 discovery.
-
-**If a dev URL was provided** (console plugin — multi-stage startup):
-
-**Before starting, check if the dev servers are already running:**
+The main agent has already started the dev server. Confirm it is responsive:
 ```bash
-curl -sf -o /dev/null <dev_url> 2>/dev/null && echo "ALREADY_RUNNING" || echo "NOT_RUNNING"
+curl -sf -o /dev/null <dev_url> 2>/dev/null && echo "READY" || echo "NOT_READY"
 ```
-If `ALREADY_RUNNING`, skip to the verification step (step 3 below).
+If `NOT_READY`, **report the error and stop.** Do not attempt to start the dev server yourself — never run `npm start`, `npx webpack serve`, or any other startup command. The main agent is responsible for server lifecycle.
 
-If `NOT_RUNNING`, start the servers:
-
-1. **Stop any leftover processes from previous runs:**
-   ```bash
-   bash <work_dir>/stop-dev.sh 2>/dev/null || true
-   ```
-   If `stop-dev.sh` does not exist, use `fuser` to kill processes on the relevant ports. Note that the dev server may be containerized (e.g., via podman or docker) — check for running containers on those ports as well:
-   ```bash
-   fuser -k 9001/tcp 2>/dev/null || true
-   fuser -k 9000/tcp 2>/dev/null || true
-   # If the dev server uses containers, stop them too:
-   podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
-   sleep 1
-   ```
-2. **Run the start script** (already created by the main agent during discovery). The script handles backgrounding, PID tracking, log redirection, and readiness polling internally — **do NOT append `&`**:
-   ```bash
-   bash <work_dir>/start-dev.sh
-   ```
-3. **Verify the dev URL** is responsive with `curl -sf`. If it fails, check `<work_dir>/webpack.log` and `<work_dir>/bridge.log` for errors, then **report the error and stop. Do not attempt alternative startup commands.**
-4. **Wait an additional 5 seconds** for JS bundles and assets to fully load.
-5. **Do not call any `playwright-mcp` tool until all checks above pass.**
-
-**Otherwise** (standard app — single dev server):
-
-**Before starting, check if the dev server is already running** by polling the expected URL. If it responds, skip startup.
-
-If not running:
-1. **Stop any leftover processes from previous runs:**
-   ```bash
-   bash <work_dir>/stop-dev.sh 2>/dev/null || true
-   ```
-   If `stop-dev.sh` does not exist, use `fuser` to kill processes on the expected port: `fuser -k <port>/tcp 2>/dev/null || true`
-2. **Run the start script:**
-   ```bash
-   bash <work_dir>/start-dev.sh
-   ```
-3. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, check `<work_dir>/dev-server.log` for errors and **report the error and stop. Do not attempt alternative startup commands.**
-4. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
-5. **Do not call any `playwright-mcp` tool until both checks above pass.**
+If the dev server crashes during the fix loop (HMR failure, etc.), restart it using:
+```bash
+bash <work_dir>/stop-dev.sh 2>/dev/null || true
+bash <work_dir>/start-dev.sh
+```
+Then re-verify with curl before continuing.
 
 ### 4. Fix Loop (per page)
 
@@ -132,23 +92,9 @@ For each page:
 
 Do not wait until all pages are done — update all files after every page so progress is visible.
 
-### 5. Stop Dev Server
+### 5. Done
 
-After all pages have been processed (or if an unrecoverable error occurs), stop the dev server:
-
-```bash
-bash <work_dir>/stop-dev.sh 2>/dev/null || true
-```
-
-If `stop-dev.sh` does not exist, clean up by killing processes on the relevant ports. Note that the dev server may be a containerized service — check for running containers as well:
-```bash
-kill $(cat <work_dir>/webpack.pid 2>/dev/null) 2>/dev/null || true
-kill $(cat <work_dir>/dev-server.pid 2>/dev/null) 2>/dev/null || true
-fuser -k 9001/tcp 2>/dev/null || true
-fuser -k 9000/tcp 2>/dev/null || true
-# If the dev server uses containers, stop them too:
-podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
-```
+Do not stop the dev server — the main agent manages server lifecycle.
 
 ### 6. Fix Log Format
 

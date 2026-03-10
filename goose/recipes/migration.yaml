@@ -71,9 +71,7 @@ sub_recipes:
 
   - name: "visual_captures"
     path: "{{ recipe_dir }}/subrecipes/visual-captures.yaml"
-    description: "Capture screenshots of a running application using an existing manifest"
-    values:
-      project_path: "{{ input_path }}"
+    description: "Capture screenshots of a running application using an existing manifest. The main agent must start the dev server first and pass the verified dev_url."
 
   - name: "visual_compare"
     path: "{{ recipe_dir }}/subrecipes/visual-compare.yaml"

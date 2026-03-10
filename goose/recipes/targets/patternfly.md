@@ -26,18 +26,33 @@ This creates `$WORK_DIR/manifest.md` with every route, interactive component, th
 
 ### 2. Capture Visual Baseline
 
-For console plugins (`IS_CONSOLE_PLUGIN=true`): read `$WORK_DIR/console-dev-setup.json` and use the console dev command as `dev_command` and the console dev URL as `dev_url`.
+**Start the dev server before invoking the sub-recipe.** The sub-recipe only captures screenshots — it does not start or stop servers.
+
+```bash
+bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+bash $WORK_DIR/start-dev.sh
+```
+
+For console plugins (`IS_CONSOLE_PLUGIN=true`): read `$WORK_DIR/console-dev-setup.json` and use the console dev URL. Otherwise, determine the dev URL from the start script output or project configuration.
+
+Verify the dev URL is responsive before invoking the sub-recipe:
+```bash
+curl -sf -o /dev/null <dev_url> && echo "READY" || echo "NOT READY"
+```
 
 Invoke `visual_captures` sub-recipe with:
 - `work_dir`: the `$WORK_DIR` path created in Phase 1
 - `output_dir`: `$WORK_DIR/baseline`
-- `project_path`: path to the project
-- `dev_command`: console dev command if console plugin, otherwise dev server command from project discovery
-- `dev_url`: console dev URL if console plugin (e.g., `http://localhost:9000`), otherwise omit
+- `dev_url`: the verified dev URL (e.g., `http://localhost:9000`)
 
 This captures screenshots for every entry in the manifest and saves them to `$WORK_DIR/baseline/`.
 
-**If the sub-recipe fails or returns with missing screenshots**: start the dev server yourself using `bash $WORK_DIR/start-dev.sh`, verify it's running, then capture the missing screenshots manually using `playwright-mcp`. Stop the dev server with `bash $WORK_DIR/stop-dev.sh` when done.
+**If the sub-recipe fails or returns with missing screenshots**: capture the missing screenshots manually using `playwright-mcp` (the dev server is still running).
+
+**After capture is complete**, stop the dev server:
+```bash
+bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+```
 
 ### 3. Run pf-codemods
 
@@ -160,18 +175,26 @@ Repeat the following loop until no unchecked issues remain. N is the fix round, 
 
 **Step 1: Capture screenshots**
 
-For console plugins (`IS_CONSOLE_PLUGIN=true`): read `$WORK_DIR/console-dev-setup.json` and use the console dev command and console dev URL.
+**Start the dev server before invoking the sub-recipe:**
+```bash
+bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+bash $WORK_DIR/start-dev.sh
+```
+Verify the dev URL is responsive before proceeding.
 
 Invoke `visual_captures` sub-recipe with:
 - `work_dir`: the `$WORK_DIR` path created in Phase 1 (same path used for baseline)
 - `output_dir`: `$WORK_DIR/post-migration-N` (N = fix round, starting at 0)
-- `project_path`: path to the project
-- `dev_command`: console dev command if console plugin, otherwise dev server command
-- `dev_url`: console dev URL if console plugin, otherwise omit
+- `dev_url`: the verified dev URL
 
 The manifest at `$WORK_DIR/manifest.md` already exists, so it will reuse it and only capture screenshots.
 
-**If the sub-recipe fails or returns with missing screenshots**: start the dev server yourself using `bash $WORK_DIR/start-dev.sh`, capture the missing screenshots manually using `playwright-mcp`, then stop the dev server with `bash $WORK_DIR/stop-dev.sh`.
+**If the sub-recipe fails or returns with missing screenshots**: capture the missing screenshots manually using `playwright-mcp` (the dev server is still running).
+
+**After capture is complete**, stop the dev server:
+```bash
+bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+```
 
 **Step 2: Compare**
 
@@ -191,15 +214,26 @@ If unchecked (`[ ]`) issues remain → continue to step 4.
 
 **Step 4: Fix**
 
+**Start the dev server before invoking the sub-recipe:**
+```bash
+bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+bash $WORK_DIR/start-dev.sh
+```
+Verify the dev URL is responsive before proceeding.
+
 If unchecked issues remain, invoke `visual_fix` sub-recipe with:
 - `work_dir`: the `$WORK_DIR` path created in Phase 1
 - `post_migration_dir`: `$WORK_DIR/post-migration-N`
 - `project_path`: path to the project
-- `dev_command`: console dev command if console plugin, otherwise dev server command
-- `dev_url`: console dev URL if console plugin, otherwise omit
+- `dev_url`: the verified dev URL
 - `migration_context`: a brief 2-3 line summary of the migration so far — include what technologies are involved and what has been done (e.g., codemods applied, which issue groups are fixed, what remains)
 
 It fixes unchecked items, marks them `[x]` in the report, copies verified screenshots to the post-migration directory, and logs fixes to `$WORK_DIR/visual-fixes.md`.
+
+**After fix is complete**, stop the dev server:
+```bash
+bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+```
 
 **Fix ALL issues (major AND minor) before completing migration.** Do not mark minor issues as acceptable.
 
