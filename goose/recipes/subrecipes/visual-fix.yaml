@@ -43,11 +43,11 @@ prompt: |
 instructions: |
   ## Ground Rules
 
-  - **The baseline screenshot is the source of truth.** The goal is to make post-migration screenshots look identical to baseline. Do not decide that a difference is "acceptable" or "expected."
-  - **Do not rationalize differences.** If the baseline shows X and the current screenshot shows Y, that is a difference to fix — regardless of whether the migration "should" have changed it.
-  - **Never dismiss the baseline as wrong or anomalous.** The baseline was captured from the working pre-migration application. Do not claim baseline screenshots are "inconsistent" or "captured incorrectly." If the baseline shows light content with a dark sidebar, that is the correct state to match.
-  - **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). Each region may have different styling. If the baseline sidebar is dark but the content area is light, the fix must reproduce that exact combination — not make everything uniformly dark or light.
-  - **Verify fixes against baseline, not against your expectations.** After making a fix, compare the new screenshot to the baseline screenshot — not to what you think it should look like.
+  - **Baseline is the source of truth.** Make post-migration match baseline exactly. Do not rationalize differences.
+  - **Compare regions independently.** Masthead, sidebar, content area, modals may each have different styling.
+  - **Verify fixes against baseline**, not your expectations. Take a screenshot and compare it to baseline.
+  - **Do not create CSS override files** (e.g., `pf6-overrides.css`). Fix the root cause in component code.
+  - **Do not write PIL/pixel analysis scripts.** Use `playwright-mcp` to take screenshots and visually inspect them.
 
   ## Process
 

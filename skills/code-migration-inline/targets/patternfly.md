@@ -238,13 +238,7 @@ Read `$WORK_DIR/manifest.md` (already created during pre-migration).
 
 Compare `$WORK_DIR/baseline/` against `$WORK_DIR/post-migration-N/`.
 
-**Ground rules for comparison:**
-- **The baseline screenshot is the source of truth.** The post-migration screenshot must look identical to it.
-- **Do not rationalize differences.** If something looks different, it IS different. Do not explain away a difference as "expected due to the migration" or "acceptable styling variation." You have no context about what the migration should change visually — your only job is to detect what changed.
-- **Report every visible difference**, no matter how small. A slightly different shade, a font weight change — all are differences and must be reported.
-- **When in doubt, report it.** False positives are acceptable. Missed differences are not.
-- **You MUST visually inspect every screenshot yourself.** Do not write scripts, use PIL, ImageMagick, or any automated pixel-diffing tool as a substitute for looking at the images. You are a multimodal model — read the image files directly and describe what you see.
-- **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). Each region may have different styling. Check each region's colors against the baseline — do not summarize the page as "all dark" or "all light."
+**Ground rules:** Baseline is the source of truth. Report every visible difference. Do not rationalize differences. Compare regions independently (masthead, sidebar, content, modals).
 
 **Step 2a: Run pixel comparison script** to identify which screenshots have real differences:
 ```bash
@@ -286,12 +280,7 @@ If unchecked (`[ ]`) issues remain → continue to step 4.
 
 **Step 4: Fix**
 
-**Ground rules for fixing:**
-- **The baseline screenshot is the source of truth.** The goal is to make post-migration screenshots look identical to baseline. Do not decide that a difference is "acceptable" or "expected."
-- **Do not rationalize differences.** If the baseline shows X and the current screenshot shows Y, that is a difference to fix — regardless of whether the migration "should" have changed it.
-- **Never dismiss the baseline as wrong or anomalous.** The baseline was captured from the working pre-migration application. If the baseline shows light content with a dark sidebar, that is the correct state to match.
-- **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). If the baseline sidebar is dark but the content area is light, the fix must reproduce that exact combination — not make everything uniformly dark or light.
-- **Verify fixes against baseline, not against your expectations.** After making a fix, compare the new screenshot to the baseline screenshot — not to what you think it should look like.
+**Ground rules:** Baseline is the source of truth. Do not rationalize differences. Compare regions independently. Verify fixes by taking a screenshot and comparing to baseline. Do not create CSS override files — fix root causes. Do not write PIL/pixel analysis scripts.
 
 Read `$WORK_DIR/status.md` to understand what migration issues have been fixed so far. This helps identify root causes of visual regressions.
 
