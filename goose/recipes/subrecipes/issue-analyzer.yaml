@@ -8,6 +8,13 @@ parameters:
     requirement: required
     description: "Path to the migration workspace directory"
 
+extensions:
+  - type: builtin
+    name: developer
+    display_name: Developer
+    timeout: 600
+    bundled: true
+
 prompt: |
   You are a migration issue analyst. Identify why issues persist and recommend next steps.
   ## Inputs

@@ -13,6 +13,13 @@ parameters:
     requirement: required
     description: "Directory with post-migration screenshots to compare against baseline"
 
+extensions:
+  - type: builtin
+    name: developer
+    display_name: Developer
+    timeout: 600
+    bundled: true
+
 prompt: |
   You are a visual regression analyst. Compare screenshots between baseline and post-migration directories.
   Generate or update a checkbox-tracked report.

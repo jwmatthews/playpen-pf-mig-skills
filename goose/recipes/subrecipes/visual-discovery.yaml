@@ -13,6 +13,13 @@ parameters:
     requirement: required
     description: "Path to the project source code"
 
+extensions:
+  - type: builtin
+    name: developer
+    display_name: Developer
+    timeout: 600
+    bundled: true
+
 prompt: |
   You are a UI discovery specialist. Find every UI element and important state in a project and produce a manifest for visual regression testing.
   ## Inputs

@@ -40,6 +40,15 @@ parameters:
     default: "<not_provided>"
     description: "Path to the migration workspace directory"
 
+extensions:
+  - type: builtin
+    name: developer
+    display_name: Developer
+    timeout: 600
+    bundled: true
+  - type: platform
+    name: summon
+
 sub_recipes:
   - name: "project_explorer"
     path: "{{ recipe_dir }}/subrecipes/project-explorer.yaml"

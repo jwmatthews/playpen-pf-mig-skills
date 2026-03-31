@@ -18,6 +18,20 @@ parameters:
     requirement: required
     description: "The dev server URL, already verified as responsive by the main agent (e.g., http://localhost:9000)"
 
+extensions:
+  - type: builtin
+    name: developer
+    display_name: Developer
+    timeout: 600
+    bundled: true
+  - type: stdio
+    name: playwright
+    cmd: npx
+    args:
+      - -y
+      - '@playwright/mcp@latest'
+    timeout: 300
+
 prompt: |
   You are a screenshot capture specialist. Capture screenshots of a running application using an existing manifest.
   Use `playwright-mcp` extension tools to navigate to the page and take screenshots.
