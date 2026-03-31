@@ -12,7 +12,7 @@ Pre-Migration → Phase 2 (Fix Loop) → Phase 3 (E2E Tests) → Visual Comparis
 
 ## Pre-Migration
 
-**Complete ALL of these steps BEFORE Phase 2. These steps are strictly sequential — each step must complete before the next one starts. Do not parallelize them.** The visual baseline (step 2) must capture the code in its original pre-migration state, before pf-codemods or any other tool modifies the source.
+**Complete ALL of these steps BEFORE Phase 2. These steps are strictly sequential — each step must complete before the next one starts. Do not parallelize them.** The visual baseline (step 2) must capture the code in its original pre-migration state, before any tool modifies the source.
 
 ### 1. Discover UI Elements
 
@@ -97,36 +97,7 @@ Project: <project_path>
 
 4. **Stop dev server**: `bash $WORK_DIR/stop-dev.sh 2>/dev/null || true`
 
-### 3. Run pf-codemods
-
-**Back up ESLint configuration before running codemods** — pf-codemods can corrupt ESLint config files by serializing JavaScript constructor functions as string literals (e.g., `"function Object() { [native code] }"`).
-
-```bash
-# Back up ESLint config (try common config file names)
-for f in .eslintrc.json .eslintrc.js .eslintrc.cjs .eslintrc .eslintrc.yaml .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.cjs; do
-  [ -f "$f" ] && cp "$f" "$f.pre-codemods-backup"
-done
-
-npx @patternfly/pf-codemods@latest <project_path> --v6 --fix
-```
-
-**After running pf-codemods, immediately:**
-
-1. **Check ESLint config integrity** — if linting fails with config parsing errors, restore the backup:
-   ```bash
-   npx eslint --print-config . > /dev/null 2>&1 || {
-     echo "ESLint config corrupted by pf-codemods, restoring backup"
-     for f in .eslintrc.json .eslintrc.js .eslintrc.cjs .eslintrc .eslintrc.yaml .eslintrc.yml eslint.config.js eslint.config.mjs eslint.config.cjs; do
-       [ -f "$f.pre-codemods-backup" ] && cp "$f.pre-codemods-backup" "$f"
-     done
-   }
-   ```
-2. **Fix formatting** — pf-codemods introduces tab/space inconsistencies: `npx prettier --write <project_path>`
-3. **Consolidate imports** — pf-codemods creates duplicate import lines from the same package: run `npx eslint --fix .` if the project's ESLint config includes import sorting/merging rules
-
-This auto-fixes many PF5→PF6 issues. Some will still need manual fixes.
-
-### 4. Upgrade Dependencies
+### 3. Upgrade Dependencies
 
 Check `package.json` for all `@patternfly/*` dependencies and upgrade every one of them to `^6.x`. This includes packages like `@patternfly/react-core`, `@patternfly/react-table`, `@patternfly/react-icons`, `@patternfly/patternfly`, and any others the project uses. Then run `npm install`.
 
@@ -157,7 +128,7 @@ The following Kantra rules produce false positives for PF6 6.x. **Do not create 
 | Modal `title` → `titleText` | Matches `title` on `ModalHeader` (the correct new API), not deprecated `Modal.title` |
 | `ErrorState` prop renames | Often a custom project component, not PF's `ErrorState` from `react-component-groups` |
 | `CardHeader selectableActions` | Often already using the correct PF6 `selectableActions` object API |
-| `ToolbarFilter chips` → `labels` | Often already migrated by pf-codemods; check actual props before creating a group |
+| `ToolbarFilter chips` → `labels` | Often already using the correct PF6 `labels` prop; check actual props before creating a group |
 
 **These false positives are automatically removed by `filter_kantra_false_positives.py`.** Always run the filter script on Kantra output before analysis — the filtered output will only contain real issues. If you see any of the above patterns in filtered output, they were not caught by the filter; skip them manually.
 
@@ -179,9 +150,9 @@ Avoid:
 
 ### CSS Variable Migration
 
-In addition to CSS class name prefixes (`pf-v5-c-*` → `pf-v6-c-*`), also update **CSS custom property overrides**:
-- `--pf-v5-chart-*` → `--pf-v6-chart-*`
-- `--pf-v5-global-*` → check if migrated to `--pf-t-*` design tokens
+In addition to CSS class name prefixes (`pf-v5-c-*` → `pf-v6-c-*`), also update:
+- **CSS custom property overrides**: `--pf-v5-chart-*` → `--pf-v6-chart-*`, `--pf-v5-global-*` → check if migrated to `--pf-t-*` design tokens
+- **Theme CSS classes**: `pf-v5-theme-dark` → `pf-v6-theme-dark` (dark theme will not apply if the old class name is used)
 
 **Search all `.scss`, `.css`, `.less`, `.ts`, and `.tsx` files for `pf-v5` references after migration.** CSS variable references are silent failures — the old variable names compile without errors but have no effect at runtime. Test files (e.g., Playwright page objects) often contain `pf-v5-c-*` CSS selectors that also need updating.
 
@@ -189,9 +160,9 @@ In addition to CSS class name prefixes (`pf-v5-c-*` → `pf-v6-c-*`), also updat
 grep -r "pf-v5" --include="*.scss" --include="*.css" --include="*.less" --include="*.ts" --include="*.tsx" <project_path>
 ```
 
-### 5. Fix Deprecated Modal with Composable Children
+### 4. Fix Deprecated Modal with Composable Children
 
-**Run this immediately after upgrading dependencies (step 4).** pf-codemods moves `Modal` to `@patternfly/react-core/deprecated` but does not add `hasNoBodyWrapper`. Without it, the deprecated Modal wraps all children in an extra `ModalBoxBody` div, causing ~60px vertical layout shifts.
+**Run this immediately after upgrading dependencies (step 3).** When `Modal` is moved to `@patternfly/react-core/deprecated`, `hasNoBodyWrapper` must be added. Without it, the deprecated Modal wraps all children in an extra `ModalBoxBody` div, causing ~60px vertical layout shifts.
 
 ```bash
 python3 <scripts_dir>/fix_deprecated_modal_wrapper.py <project_path>

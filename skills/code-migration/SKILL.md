@@ -101,7 +101,7 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
    # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
    # Accept exit code 0 (HTTP 200) or 22 (HTTP 404 — "Cannot GET /") as "ready"
    for i in $(seq 1 60); do
-     curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?
+     curl -sf -o /dev/null http://localhost:9005 2>/dev/null; rc=$?
      [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
      sleep 2
    done
@@ -138,7 +138,7 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
 
    # 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
    for i in $(seq 1 60); do
-     curl -sf -o /dev/null http://localhost:9001 2>/dev/null; rc=$?
+     curl -sf -o /dev/null http://localhost:9005 2>/dev/null; rc=$?
      [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
      sleep 2
    done
@@ -164,7 +164,7 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
        -e BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> \
        -e BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS=true \
        -e BRIDGE_K8S_AUTH=bearer-token -e BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
-       -e BRIDGE_PLUGINS=<plugin_name>=http://localhost:9001 \
+       -e BRIDGE_PLUGINS=<plugin_name>=http://localhost:9005 \
        -e BRIDGE_LISTEN=http://0.0.0.0:9000 \
        quay.io/openshift/origin-console:latest > "$WORK_DIR/bridge.log" 2>&1 &
      echo $! > "$WORK_DIR/bridge.pid"
@@ -213,19 +213,67 @@ Kantra is a static source code analysis tool that uses rules to identify migrati
 
 Run initial analysis to create the fix plan:
 
-1. Run Kantra — **Kantra analysis can take 5-15 minutes and will exceed the shell timeout.** Always run it in the background with `nohup` and redirect output to a log file:
+1. **Start the frontend analyzer provider** — this must be running before Kantra is invoked:
    ```bash
-   nohup kantra analyze --input <project> --output $WORK_DIR/round-1/kantra --overwrite <FLAGS> > $WORK_DIR/round-1/kantra-run.log 2>&1 &
+   # Create provider settings file
+   cat > "$WORK_DIR/provider_settings.json" <<'PROVIDER_EOF'
+   [
+       {
+           "name": "frontend",
+           "address": "localhost:9005",
+           "initConfig": [
+               {
+                   "analysisMode": "source-only",
+                   "location": "<project>"
+               }
+           ]
+       },
+       {
+           "name": "builtin",
+           "initConfig": [
+               {
+                   "location": "<project>"
+               }
+           ]
+       }
+   ]
+   PROVIDER_EOF
+
+   # Start frontend analyzer provider in background
+   nohup frontend-analyzer-provider serve -p 9005 > "$WORK_DIR/frontend-provider.log" 2>&1 &
+   echo $! > "$WORK_DIR/frontend-provider.pid"
+
+   # Wait for provider to be ready
+   for i in $(seq 1 30); do
+     curl -sf -o /dev/null http://localhost:9005 2>/dev/null; rc=$?
+     [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
+     sleep 1
+   done
+   ```
+   Replace `<project>` with the actual project path in the provider settings file.
+
+2. Run Kantra — **Kantra analysis can take 5-15 minutes and will exceed the shell timeout.** Always run it in the background with `nohup` and redirect output to a log file.
+   **Important:** Kantra fails if the current directory is the input path. Always `cd $WORK_DIR` before running. Also set `JAVA_HOME` if not already set:
+   ```bash
+   cd "$WORK_DIR"
+   export JAVA_HOME="${JAVA_HOME:-$(dirname $(dirname $(readlink -f $(which java))))}"
+   nohup kantra analyze --input <project> --output $WORK_DIR/round-1/kantra --overwrite \
+     --override-provider-settings "$WORK_DIR/provider_settings.json" \
+     --enable-default-rulesets=false --skip-static-report --no-dependency-rules \
+     --mode source-only --run-local=true --provider=java \
+     --label-selector '!impact=frontend-testing' \
+     <FLAGS> > $WORK_DIR/round-1/kantra-run.log 2>&1 &
    KANTRA_PID=$!
    ```
    Poll for completion: `while kill -0 $KANTRA_PID 2>/dev/null; do sleep 10; done`
    Check `$WORK_DIR/round-1/kantra/output.yaml` exists before proceeding. If Kantra failed, check `$WORK_DIR/round-1/kantra-run.log` for errors.
-2. Parse Kantra output using the helper script:
+   **Note:** The `<FLAGS>` placeholder is replaced with flags from the `kantra-command-builder` subagent. The flags above (`--override-provider-settings`, `--enable-default-rulesets=false`, etc.) are always included. If the command builder returns any of these same flags, do not duplicate them.
+3. Parse Kantra output using the helper script:
    - Overview: `python3 scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.yaml`
    - File details: `python3 scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.yaml <file>`
-3. Run build, lint, unit tests (delegate to `test-runner` subagent with the test command from project discovery, specifically ask for unit tests)
-4. Collect ALL issues from ALL sources (see Issue Sources table)
-5. Create `$WORK_DIR/status.md` using the template below
+4. Run build, lint, unit tests (delegate to `test-runner` subagent with the test command from project discovery, specifically ask for unit tests)
+5. Collect ALL issues from ALL sources (see Issue Sources table)
+6. Create `$WORK_DIR/status.md` using the template below
 
 ### Fix Loop Template
 
@@ -270,7 +318,7 @@ Round Checklist:
 
 1. **Pick**: Select first incomplete group from status.md
 2. **Fix**: Apply all fixes for that group. **Before renaming any prop or API based on Kantra suggestions, verify the new name exists in the target framework's type definitions** (e.g., check the `.d.ts` files or run `tsc --noEmit`). Kantra rules may suggest renames that are not yet reflected in the installed version's types — applying them blindly will break the build.
-3. **Validate**: Run Kantra (in background with `nohup` as described above), build, lint, unit tests (delegate to `test-runner` subagent with the test command, specifically ask for unit tests)
+3. **Validate**: Ensure the frontend analyzer provider is still running (`kill -0 $(cat $WORK_DIR/frontend-provider.pid) 2>/dev/null` — restart if needed). Run Kantra (in background with `nohup` as described above, including all `--override-provider-settings` and related flags), build, lint, unit tests (delegate to `test-runner` subagent with the test command, specifically ask for unit tests)
 4. **Update**: Mark the group's checkbox as `[x]` in status.md and log the round. **Always keep status.md up to date** — it is the source of truth for migration progress.
 
 Append to status.md:
@@ -393,6 +441,12 @@ If nothing requires review:
 ## Action Required
 
 None
+```
+
+**Stop the frontend analyzer provider** — it is no longer needed after analysis is complete:
+```bash
+kill $(cat "$WORK_DIR/frontend-provider.pid" 2>/dev/null) 2>/dev/null || true
+rm -f "$WORK_DIR/frontend-provider.pid"
 ```
 
 Then delegate to `report-generator` subagent with the workspace directory path, source technology, target technology, and project path.

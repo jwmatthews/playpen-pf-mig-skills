@@ -34,12 +34,6 @@ parameters:
     description: "Comma-separated paths to YAML rules"
     default: ""
 
-  - key: enable_default_rulesets
-    input_type: boolean
-    requirement: optional
-    default: true
-    description: "Enable default rulesets"
-
   - key: workspace_dir
     input_type: string
     requirement: optional
@@ -119,7 +113,6 @@ instructions: |
   - **Target technologies**: {{ target_tech }}
   - **Input path**: {{ input_path }}
   - **Custom rules**: {{ rules }}
-  - **Enable default rulesets**: {{ enable_default_rulesets }}
   - **Workspace directory**: {{ workspace_dir }}
 
   You have access to sub-recipes to perform specialized tasks. When you need to invoke a sub-recipe, use the `subagent` tool.
@@ -322,10 +315,57 @@ instructions: |
 
   Run initial analysis to create the fix plan:
 
-  1. Run Kantra — **Kantra analysis can take 5-15 minutes and will exceed the shell timeout.** Always run it in the background with `nohup` and redirect output to a log file:
-     **Always include `--overwrite`** to handle re-runs. **Use `round-N`** (current round number) in the output path to keep results separate:
+  1. **Start the frontend analyzer provider** — this must be running before Kantra is invoked:
      ```bash
-     nohup kantra analyze --input "{{ input_path }}" --output "$WORK_DIR/round-1/kantra" --overwrite <FLAGS> > "$WORK_DIR/round-1/kantra-run.log" 2>&1 &
+     # Create provider settings file
+     cat > "$WORK_DIR/provider_settings.json" <<'PROVIDER_EOF'
+     [
+         {
+             "name": "frontend",
+             "address": "localhost:9005",
+             "initConfig": [
+                 {
+                     "analysisMode": "source-only",
+                     "location": "{{ input_path }}"
+                 }
+             ]
+         },
+         {
+             "name": "builtin",
+             "initConfig": [
+                 {
+                     "location": "{{ input_path }}"
+                 }
+             ]
+         }
+     ]
+     PROVIDER_EOF
+
+     # Start frontend analyzer provider in background
+     nohup frontend-analyzer-provider serve -p 9005 > "$WORK_DIR/frontend-provider.log" 2>&1 &
+     echo $! > "$WORK_DIR/frontend-provider.pid"
+     echo "Frontend analyzer provider running as PID $(cat $WORK_DIR/frontend-provider.pid)"
+
+     # Wait for provider to be ready
+     for i in $(seq 1 30); do
+       curl -sf -o /dev/null http://localhost:9005 2>/dev/null; rc=$?
+       [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
+       sleep 1
+     done
+     ```
+
+  2. Run Kantra — **Kantra analysis can take 5-15 minutes and will exceed the shell timeout.** Always run it in the background with `nohup` and redirect output to a log file:
+     **Always include `--overwrite`** to handle re-runs. **Use `round-N`** (current round number) in the output path to keep results separate.
+     **Important:** Kantra fails if the current directory is the input path. Always `cd $WORK_DIR` before running. Also set `JAVA_HOME` if not already set:
+     ```bash
+     cd "$WORK_DIR"
+     export JAVA_HOME="${JAVA_HOME:-$(dirname $(dirname $(readlink -f $(which java))))}"
+     nohup kantra analyze --input "{{ input_path }}" --output "$WORK_DIR/round-1/kantra" --overwrite \
+       --override-provider-settings "$WORK_DIR/provider_settings.json" \
+       --enable-default-rulesets=false --skip-static-report --no-dependency-rules \
+       --mode source-only --run-local=true --provider=java \
+       --label-selector '!impact=frontend-testing' \
+       <FLAGS> > "$WORK_DIR/round-1/kantra-run.log" 2>&1 &
      KANTRA_PID=$!
      echo "Kantra running as PID $KANTRA_PID"
      ```
@@ -335,17 +375,18 @@ instructions: |
      wait $KANTRA_PID && echo "Kantra finished successfully" || echo "Kantra failed with exit code $?"
      ```
      Check `$WORK_DIR/round-N/kantra/output.yaml` exists before proceeding. If Kantra failed, check `$WORK_DIR/round-N/kantra-run.log` for errors.
-  2. **Filter known false positives** before analysis — this removes rules that have been verified as false positives, so you never waste time re-checking them:
+     **Note:** The `<FLAGS>` placeholder is replaced with flags from the `kantra_command_builder` subrecipe. The flags above (`--override-provider-settings`, `--enable-default-rulesets=false`, etc.) are always included. If the command builder returns any of these same flags, do not duplicate them.
+  3. **Filter known false positives** before analysis — this removes rules that have been verified as false positives, so you never waste time re-checking them:
      ```bash
      python3 {{ recipe_dir }}/scripts/filter_kantra_false_positives.py $WORK_DIR/round-1/kantra/output.yaml
      ```
      This creates `output.filtered.yaml` (use this for all subsequent analysis) and `false-positives-removed.json` (log of what was removed). List the removed false positives in `$WORK_DIR/status.md` — no further verification needed.
-  3. Parse the **filtered** Kantra output using the helper script:
+  4. Parse the **filtered** Kantra output using the helper script:
      - Overview: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.filtered.yaml`
      - File details: `python3 {{ recipe_dir }}/scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.filtered.yaml <file>`
-  4. Run build, lint, unit tests (invoke `test_runner` for tests)
-  5. Collect ALL issues from ALL sources (see Issue Sources table)
-  6. Create `$WORK_DIR/status.md` using the template below
+  5. Run build, lint, unit tests (invoke `test_runner` for tests)
+  6. Collect ALL issues from ALL sources (see Issue Sources table)
+  7. Create `$WORK_DIR/status.md` using the template below
 
   ### Status Template
 
@@ -390,7 +431,7 @@ instructions: |
 
   1. **Pick**: Select first incomplete group from status.md
   2. **Fix**: Apply all fixes for that group. **Before renaming any prop or API based on Kantra suggestions, verify the new name exists in the target framework's type definitions** (e.g., check the `.d.ts` files or run `tsc --noEmit`). Kantra rules may suggest renames that are not yet reflected in the installed version's types — applying them blindly will break the build.
-  3. **Validate**: Run Kantra (in background with `nohup` as described above), build, lint, unit tests (invoke `test_runner`)
+  3. **Validate**: Ensure the frontend analyzer provider is still running (`kill -0 $(cat $WORK_DIR/frontend-provider.pid) 2>/dev/null` — restart if needed). Run Kantra (in background with `nohup` as described above, including all `--override-provider-settings` and related flags), build, lint, unit tests (invoke `test_runner`)
   4. **Update**: Mark the group's checkbox as `[x]` in status.md and log the round. **Always keep status.md up to date** — it is the source of truth for migration progress.
 
   Append to status.md:
@@ -527,6 +568,12 @@ instructions: |
   ## Action Required
 
   None
+  ```
+
+  **Stop the frontend analyzer provider** — it is no longer needed after analysis is complete:
+  ```bash
+  kill $(cat "$WORK_DIR/frontend-provider.pid" 2>/dev/null) 2>/dev/null || true
+  rm -f "$WORK_DIR/frontend-provider.pid"
   ```
 
   Then invoke `report_generator` sub-recipe with:
