@@ -1,0 +1,60 @@
+# Runtime validation config for PatternFly (React) migrations.
+#
+# Default commands and routes for validating PF5→PF6 migrations.
+# The runtime-validator subagent uses this config when target=patternfly.
+
+# Install dependencies before launching
+setup_commands:
+  - "npm install --legacy-peer-deps"
+
+# Start the development server
+launch_command: "npm run start"
+
+# Alternative launch commands to try if the primary fails
+launch_command_alternatives:
+  - "npm run dev"
+  - "npx react-scripts start"
+  - "npx vite"
+
+# String to watch for in stdout/stderr indicating the app is ready
+launch_ready_signal: "Compiled successfully|ready in|Local:"
+
+# Seconds to wait for the ready signal before giving up
+launch_timeout: 120
+
+# URL to verify the app responds after launch
+health_check: "http://localhost:3000"
+
+# Alternative ports to check if default doesn't respond
+health_check_alternatives:
+  - "http://localhost:5173"
+  - "http://localhost:8080"
+
+# Run the test suite
+test_command: "npx react-scripts test --watchAll=false --ci"
+
+# Alternative test commands
+test_command_alternatives:
+  - "npx vitest run"
+  - "npm test -- --watchAll=false"
+  - "npx jest --ci"
+
+# Routes to screenshot for visual comparison.
+# These are common routes in PatternFly-based UIs.
+# The user should customize this list for their specific app.
+routes_to_screenshot:
+  - path: "/"
+    name: "home"
+    description: "Main landing page / dashboard"
+  - path: "/login"
+    name: "login"
+    description: "Login page (if applicable)"
+
+# How to stop the dev server after validation
+cleanup_command: null  # The runtime-validator kills the background process directly
+
+# TypeScript compilation check (catches type errors without running)
+typecheck_command: "npx tsc --noEmit"
+
+# Lint check (catches import errors and unused variables)
+lint_command: "npx eslint src/ --ext .ts,.tsx --quiet"

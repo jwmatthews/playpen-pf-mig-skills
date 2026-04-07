@@ -1,0 +1,113 @@
+# Migration Evaluation System — Progress Log
+
+## Codebase Patterns
+- Always pass `--no-gumtree` when GumTree binary isn't available
+- scoring-results.json uses `dir_a`/`dir_b` keys for resolved paths
+- comparison-data.json `files.identical` items may be dicts with `path` key or plain strings
+- ref_diff = inverted diff (golden content as + lines, AI content as - lines)
+- cand_diff = as-is diff (golden content as - lines, AI content as + lines)
+- Detectors check BOTH + and - lines for applicability via `_diff_has_pattern OR _diff_removes_pattern` — this can cause false applicability triggers when the AI uses a pattern that the golden truth doesn't
+- Patterns perfectly applied by the AI (resulting in identical files between golden and AI) show as "not_applicable" since detectors only run on modified/removed files — this is by design and correct
+- pydantic 2.11.7 is available system-wide (no venv needed)
+
+---
+
+## [2026-03-04] - Step 1: Deterministic Evaluation Pipeline
+- What was implemented:
+  - `scripts/run_evaluation.py` — orchestrates enumerate→diff→categorize→score for N attempts
+  - `scripts/compose_evaluation.py` — merges pairwise results, cross-attempt comparison, problem areas
+  - `scripts/generate_evaluation_report.py` — 6-tab HTML report (executive summary, problems, comparison, LLM, scores, files)
+  - `scripts/models.py` — Pydantic v2 models for all data structures
+  - `score_migration.py` — added `--label` argument for metadata labeling
+  - `requirements.txt` — added `pydantic>=2.12`
+  - `agents/repo-differ.md` — added evaluation mode note
+- Files changed:
+  - NEW: scripts/run_evaluation.py, scripts/compose_evaluation.py, scripts/generate_evaluation_report.py, scripts/models.py
+  - MODIFIED: scripts/score_migration.py, scripts/requirements.txt, agents/repo-differ.md
+- **Learnings for future iterations:**
+  - The run_evaluation.py orchestrator calls pipeline scripts as subprocesses — this is simpler than importing them but means error handling must parse subprocess output
+  - compose_evaluation.py uses Pydantic model_dump_json() for output, which provides automatic validation
+
+---
+
+## [2026-03-04] - Step 3: Adversarial Subagents
+- What was implemented:
+  - `agents/bug-finder.md` — finds all migration issues (incentivized for thoroughness)
+  - `agents/adversary.md` — challenges false positives (incentivized for precision)
+  - `agents/referee.md` — final verdicts with confidence scores (incentivized for accuracy)
+  - `SKILL.md` — evaluation mode orchestration (E1-E7)
+- Files changed:
+  - NEW: agents/bug-finder.md, agents/adversary.md, agents/referee.md
+  - MODIFIED: skills/migration-comparison/SKILL.md
+
+---
+
+## [2026-03-04] - Step 4: Runtime Validation
+- What was implemented:
+  - `agents/runtime-validator.md` — subagent for running setup/launch/test/screenshot validation
+  - `targets/patternfly_runtime.yaml` — default runtime config for PatternFly React apps
+  - Updated SKILL.md to wire runtime validation (E3) between deterministic pipeline and adversarial review
+- Files changed:
+  - NEW: agents/runtime-validator.md, targets/patternfly_runtime.yaml
+  - MODIFIED: skills/migration-comparison/SKILL.md
+- **Learnings for future iterations:**
+  - Runtime validator is framework-agnostic by design — it takes a config with setup/launch/test commands
+  - Target runtime configs provide sensible defaults with alternatives (npm run start vs npm run dev, etc.)
+  - Runtime evidence feeds into bug-finder and referee (not adversary) since those agents benefit from runtime context
+
+---
+
+## [2026-03-04] - Step 2: Review & Harden Deterministic Layer
+- Ran evaluation against quipucords-ui PF5→PF6 migration:
+  - Golden truth: quipucords/quipucords-ui PR #664 merge commit (4908c3b)
+  - AI candidate: pranavgaikwad/quipucords-ui PR #1 head (a3ae2cf)
+  - Result: B (80%) — File Coverage 100%, Pattern Score 73.8%, Noise Penalty 22%
+
+- **Detector findings:**
+  - 12 of 24 patterns fired (applicable), 12 not_applicable
+  - Not_applicable patterns are genuinely not applicable — they were perfectly applied by both golden and AI, resulting in identical files (no diff = no detection needed)
+  - 7 correct, 1 incorrect (select-rewrite), 4 missing (inner-ref-to-ref, is-action-cell, css-logical-properties, css-class-prefix partial)
+  - `select-rewrite` INCORRECT confirmed: AI partially imported PF6 components (MenuToggle, SelectList) but still uses old API props (onToggle, isOpen, selections)
+  - `inner-ref-to-ref` MISSING confirmed: golden truth changed innerRef→ref in 5 table-battery files, AI still uses innerRef
+  - `is-action-cell` MISSING confirmed: golden truth changed some isActionCell→hasAction, AI didn't
+  - Minor false positive: `button-icon-prop` marks AI as "correct" for using `icon=` on Button, but golden truth uses `PageToggleButton isHamburgerButton` instead — different approach, both valid PF6
+
+- **Scoring assessment:**
+  - B (80%) feels slightly generous given the select-rewrite failure, but reasonable
+  - Composite score (C, 78%) with the adjusted weights (0.15 FC + 0.50 det + 0.10 noise + 0.25 LLM) better captures the quality when LLM results are added
+  - Noise penalty correctly flags TODOs, unnecessary files, and incorrect migrations
+
+- **Detector fix applied:**
+  - `button-icon-prop`: changed applicability check from bidirectional diff matching to checking `ref_content` (golden truth file content) directly for `icon=` pattern. This fixes a false positive where the AI got credit for using `icon=` on viewLayout.tsx when the golden truth used a different approach (`PageToggleButton`). After fix, detector correctly finds 7 files (all genuine) instead of 2 (one false positive).
+
+- **Known detector limitations:**
+  - Some detectors still use bidirectional pattern matching (checks both + and - diff lines) for applicability, which can theoretically cause false triggers
+  - Future improvement: apply the same content-based approach used in `button-icon-prop` fix to other detectors
+
+- **Scoring assessment (after fix):**
+  - Overall: B (80%) — same grade, pattern score stays 73.8%
+  - Composite: C (78%) — appropriate for an AI migration with select-rewrite failure + several missed trivial patterns
+  - Problem areas: 1 HIGH (select-rewrite incorrect), 3 LOW (css-logical-properties, inner-ref-to-ref, is-action-cell missing)
+
+---
+
+## [2026-03-04] - Multi-Attempt Verification (codemods)
+- Ran `npx @patternfly/pf-codemods --fix src/` on PF5 original (quipucords-ui v2.1.0, commit 3b3ce52) to produce codemods-only attempt
+- Ran full evaluation with both ai-agent and codemods attempts
+- Results:
+  - ai-agent: B (80%) deterministic, C (78%) composite
+  - codemods: C (74%) deterministic, C (72%) composite
+- Cross-attempt comparison:
+  - AI leads on 4 patterns (css-class-prefix, react-tokens-icon-status, test-selector-rewrite, utility-class-rename)
+  - Codemods leads on 6 patterns (align-right-to-end, chips-to-labels, masthead-reorganization, page-section-variant, text-content-consolidation, toolbar-variant)
+  - 4 ties (both correct), 4 neither (both wrong)
+  - 12 total problem areas identified
+- **Learnings for future iterations:**
+  - Patterns that the AI perfectly applies (identical files vs golden) show as "not_applicable" since detectors only run on modified files. This means the comparison slightly under-credits the AI vs codemods for patterns both got right but through different code paths.
+  - Codemods excel at mechanical renames (align-right-to-end, chips-to-labels) but fail at complex semantic patterns (select-rewrite, test-selector-rewrite)
+  - AI scores higher overall despite fewer pattern advantages because it has lower noise and fewer incorrect patterns
+
+## [2026-03-04] - Code Quality
+- `mypy --strict` passes on all 4 new Python files: models.py, run_evaluation.py, compose_evaluation.py, generate_evaluation_report.py
+
+---

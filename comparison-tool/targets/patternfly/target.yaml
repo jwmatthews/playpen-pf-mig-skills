@@ -1,0 +1,89 @@
+name: "PatternFly 5 → 6"
+framework: patternfly
+
+dependencies:
+  expected:
+    - name: "@patternfly/react-core"
+      version: "^6"
+    - name: "@patternfly/patternfly"
+      version: "^6"
+    - name: "@patternfly/react-icons"
+      version: "^6"
+    - name: "@patternfly/react-table"
+      version: "^6"
+
+text_patterns:
+  - id: pf-v5-css-prefix
+    pattern: "pf-v5-"
+    severity: warning
+    title: "PF5 CSS class prefix"
+    suggestion: "Replace pf-v5- with pf-v6-"
+    extensions: [.tsx, .ts, .css, .scss, .jsx, .js]
+  - id: pf-v5-css-var
+    pattern: "--pf-v5-"
+    severity: warning
+    title: "PF5 CSS variable prefix"
+    extensions: [.tsx, .ts, .css, .scss]
+  - id: deprecated-import
+    pattern: "from ['\"]@patternfly/react-core/deprecated['\"]"
+    severity: info
+    title: "Import from deprecated module"
+    extensions: [.tsx, .ts, .jsx, .js]
+  - id: old-text-component
+    pattern: "\\b(TextContent|TextList|TextListItem)\\b"
+    severity: warning
+    title: "Deprecated component (use Content)"
+    extensions: [.tsx, .ts, .jsx, .js]
+    exclude_on_line: "import|from"
+  - id: old-table-composable
+    pattern: "\\bTableComposable\\b"
+    severity: warning
+    title: "TableComposable renamed to Table"
+    extensions: [.tsx, .ts, .jsx, .js]
+  - id: old-spacer-value
+    pattern: "\\bspacer(None|Sm|Md|Lg|Xl|2xl|3xl|4xl)\\b"
+    severity: warning
+    title: "Old spacer prop value (use gap*)"
+    extensions: [.tsx, .ts, .jsx, .js]
+  - id: old-align-value
+    pattern: "['\"]align(Right|Left)['\"]"
+    severity: warning
+    title: "Old alignment value (use alignEnd/alignStart)"
+    extensions: [.tsx, .ts, .jsx, .js]
+  - id: old-global-token
+    pattern: "\\bglobal_(Color|BackgroundColor|active_color|success_color|warning_color|danger_color)_"
+    severity: warning
+    title: "Old global_* token (use t_* in PF6)"
+    extensions: [.tsx, .ts]
+  - id: old-chip-component
+    pattern: "\\bChip(Group)?\\b"
+    severity: info
+    title: "Chip/ChipGroup renamed to Label/LabelGroup"
+    extensions: [.tsx, .ts, .jsx, .js]
+    exclude_on_line: "import|from|deprecated"
+  - id: old-empty-state-header
+    pattern: "\\bEmptyStateHeader\\b|\\bEmptyStateIcon\\b"
+    severity: warning
+    title: "Removed EmptyState subcomponents (use titleText prop)"
+    extensions: [.tsx, .ts, .jsx, .js]
+
+build:
+  install_cmd: "npm install --legacy-peer-deps"
+  build_cmd: "npm run build"
+
+runtime:
+  dev_server_cmd: "npm start"
+  port: 3000
+  ready_pattern: "Compiled|webpack|ready|Local:"
+  startup_timeout: 120
+
+routes:
+  - path: /
+    name: home
+    wait_for: ""
+  - path: /login
+    name: login
+
+docs:
+  - url: "https://www.patternfly.org/get-started/upgrade"
+    description: "Official PF6 migration guide"
