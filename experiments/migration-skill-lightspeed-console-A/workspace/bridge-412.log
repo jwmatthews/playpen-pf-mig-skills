@@ -1,0 +1,82 @@
+runtime: lfstack.push invalid packing: node=0xffff8853e580 cnt=0x1 packed=0xffff8853e5800001 -> node=0xffffffff8853e580
+fatal error: lfstack.push
+
+runtime stack:
+runtime.throw({0x32e67da?, 0x23ff06d?})
+	/usr/local/go/src/runtime/panic.go:992 +0x71
+runtime.(*lfstack).push(0x2?, 0xc00004e020?)
+	/usr/local/go/src/runtime/lfstack.go:30 +0x125
+runtime.(*spanSetBlockAlloc).free(...)
+	/usr/local/go/src/runtime/mspanset.go:292
+runtime.(*spanSet).reset(0x4cf17d8)
+	/usr/local/go/src/runtime/mspanset.go:265 +0x70
+runtime.finishsweep_m()
+	/usr/local/go/src/runtime/mgcsweep.go:260 +0x9c
+runtime.gcStart.func1()
+	/usr/local/go/src/runtime/mgc.go:664 +0x17
+runtime.systemstack()
+	/usr/local/go/src/runtime/asm_amd64.s:469 +0x49
+
+goroutine 1 [running, locked to thread]:
+runtime.systemstack_switch()
+	/usr/local/go/src/runtime/asm_amd64.s:436 fp=0xc000526b38 sp=0xc000526b30 pc=0x1117e60
+runtime.gcStart({0xffff8852f5b8?, 0x500?, 0x500?})
+	/usr/local/go/src/runtime/mgc.go:663 +0x449 fp=0xc000526bb8 sp=0xc000526b38 pc=0x10cce09
+runtime.mallocgc(0x500, 0x311d540, 0x1)
+	/usr/local/go/src/runtime/malloc.go:1205 +0x85c fp=0xc000526c30 sp=0xc000526bb8 pc=0x10bdc1c
+runtime.growslice(0x311d540, {0xc0004f7b80?, 0x10c427f?, 0xc000069b00?}, 0xc0005662f8?)
+	/usr/local/go/src/runtime/slice.go:278 +0x4ea fp=0xc000526c98 sp=0xc000526c30 pc=0x10fff8a
+regexp/syntax.(*compiler).inst(...)
+	/usr/local/go/src/regexp/syntax/compile.go:164
+regexp/syntax.(*compiler).cap(...)
+	/usr/local/go/src/regexp/syntax/compile.go:179
+regexp/syntax.(*compiler).compile(0xc000527450, 0xc00028fdc0)
+	/usr/local/go/src/regexp/syntax/compile.go:130 +0x9a5 fp=0xc000526f10 sp=0xc000526c98 pc=0x1564205
+regexp/syntax.(*compiler).compile(0xc000527450, 0xc00028ff10)
+	/usr/local/go/src/regexp/syntax/compile.go:137 +0x107e fp=0xc000527188 sp=0xc000526f10 pc=0x15648de
+regexp/syntax.(*compiler).compile(0xc000527450, 0xc0002a4000)
+	/usr/local/go/src/regexp/syntax/compile.go:147 +0x12b2 fp=0xc000527400 sp=0xc000527188 pc=0x1564b12
+regexp/syntax.Compile(0xc0002a4000?)
+	/usr/local/go/src/regexp/syntax/compile.go:74 +0x13c fp=0xc0005274c8 sp=0xc000527400 pc=0x15636bc
+regexp.compile({0x3311dbb, 0x1e}, 0xf5b8?, 0x0)
+	/usr/local/go/src/regexp/regexp.go:180 +0x7b fp=0xc000527550 sp=0xc0005274c8 pc=0x157d01b
+regexp.Compile(...)
+	/usr/local/go/src/regexp/regexp.go:135
+regexp.MustCompile({0x3311dbb, 0x1e})
+	/usr/local/go/src/regexp/regexp.go:315 +0x31 fp=0xc0005275c8 sp=0xc000527550 pc=0x157db91
+google.golang.org/grpc/internal/binarylog.init()
+	/go/src/github.com/openshift/console/vendor/google.golang.org/grpc/internal/binarylog/env_config.go:135 +0xdb fp=0xc000527600 sp=0xc0005275c8 pc=0x25edc9b
+runtime.doInit(0x4bf0ae0)
+	/usr/local/go/src/runtime/proc.go:6222 +0x126 fp=0xc000527730 sp=0xc000527600 pc=0x10f8846
+runtime.doInit(0x4bfc400)
+	/usr/local/go/src/runtime/proc.go:6199 +0x71 fp=0xc000527860 sp=0xc000527730 pc=0x10f8791
+runtime.doInit(0x4be2420)
+	/usr/local/go/src/runtime/proc.go:6199 +0x71 fp=0xc000527990 sp=0xc000527860 pc=0x10f8791
+runtime.doInit(0x4bf42c0)
+	/usr/local/go/src/runtime/proc.go:6199 +0x71 fp=0xc000527ac0 sp=0xc000527990 pc=0x10f8791
+runtime.doInit(0x4be6ca0)
+	/usr/local/go/src/runtime/proc.go:6199 +0x71 fp=0xc000527bf0 sp=0xc000527ac0 pc=0x10f8791
+runtime.doInit(0x4be8520)
+	/usr/local/go/src/runtime/proc.go:6199 +0x71 fp=0xc000527d20 sp=0xc000527bf0 pc=0x10f8791
+runtime.doInit(0x4bf8400)
+	/usr/local/go/src/runtime/proc.go:6199 +0x71 fp=0xc000527e50 sp=0xc000527d20 pc=0x10f8791
+runtime.doInit(0x4bf0d20)
+	/usr/local/go/src/runtime/proc.go:6199 +0x71 fp=0xc000527f80 sp=0xc000527e50 pc=0x10f8791
+runtime.main()
+	/usr/local/go/src/runtime/proc.go:233 +0x1d3 fp=0xc000527fe0 sp=0xc000527f80 pc=0x10eb813
+runtime.goexit()
+	/usr/local/go/src/runtime/asm_amd64.s:1571 +0x1 fp=0xc000527fe8 sp=0xc000527fe0 pc=0x111a081
+
+goroutine 21 [chan receive]:
+k8s.io/klog.(*loggingT).flushDaemon(0x0?)
+	/go/src/github.com/openshift/console/vendor/k8s.io/klog/klog.go:1010 +0x6a
+created by k8s.io/klog.init.0
+	/go/src/github.com/openshift/console/vendor/k8s.io/klog/klog.go:411 +0xef
+
+goroutine 24 [sleep]:
+time.Sleep(0x6fc23ac00)
+	/usr/local/go/src/runtime/time.go:194 +0x12e
+sigs.k8s.io/controller-runtime/pkg/log.init.0.func1()
+	/go/src/github.com/openshift/console/vendor/sigs.k8s.io/controller-runtime/pkg/log/log.go:63 +0x38
+created by sigs.k8s.io/controller-runtime/pkg/log.init.0
+	/go/src/github.com/openshift/console/vendor/sigs.k8s.io/controller-runtime/pkg/log/log.go:62 +0x25

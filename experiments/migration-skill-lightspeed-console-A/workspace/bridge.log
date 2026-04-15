@@ -1,0 +1,178 @@
+SIGSEGV: segmentation violation
+PC=0x1551765 m=4 sigcode=1 addr=0xffffffff5cc4fec0
+
+goroutine 0 gp=0xc0001021c0 m=4 mp=0xc000100008 [idle]:
+runtime.netpoll(0xc000054020?)
+	/usr/lib/golang/src/runtime/netpoll_epoll.go:166 +0x245 fp=0xffff5dd6bbc0 sp=0xffff5dd6b530 pc=0x1551765
+runtime.findRunnable()
+	/usr/lib/golang/src/runtime/proc.go:3470 +0x8c5 fp=0xffff5dd6bd38 sp=0xffff5dd6bbc0 pc=0x155eb85
+runtime.schedule()
+	/usr/lib/golang/src/runtime/proc.go:3868 +0xb1 fp=0xffff5dd6bd70 sp=0xffff5dd6bd38 pc=0x15600f1
+runtime.park_m(0xc000009500)
+	/usr/lib/golang/src/runtime/proc.go:4036 +0x1ec fp=0xffff5dd6bdc8 sp=0xffff5dd6bd70 pc=0x15606cc
+runtime.mcall()
+	/usr/lib/golang/src/runtime/asm_amd64.s:458 +0x4e fp=0xffff5dd6bde0 sp=0xffff5dd6bdc8 pc=0x158adce
+
+goroutine 1 gp=0xc0000081c0 m=nil [runnable, locked to thread]:
+runtime.asyncPreempt2()
+	/usr/lib/golang/src/runtime/preempt.go:307 +0x39 fp=0xc0003599d0 sp=0xc0003599b0 pc=0x1557439
+runtime.asyncPreempt()
+	/usr/lib/golang/src/runtime/preempt_amd64.s:53 +0xdb fp=0xc000359b58 sp=0xc0003599d0 pc=0x158e3bb
+os.(*File).Read(0xc000170000, {0xc000234000?, 0x0?, 0xffff00000000?})
+	/usr/lib/golang/src/os/file.go:119 +0x73 fp=0xc000359b98 sp=0xc000359b58 pc=0x161d733
+os.ReadFile({0x3f10fc8?, 0xc000359cd0?})
+	/usr/lib/golang/src/os/file.go:793 +0x167 fp=0xc000359c68 sp=0xc000359b98 pc=0x161ebe7
+crypto/internal/backend.hostFIPSModeEnabled()
+	/usr/lib/golang/src/crypto/internal/backend/hostfips.go:12 +0x25 fp=0xc000359ce0 sp=0xc000359c68 pc=0x1674845
+crypto/internal/backend.init.0()
+	/usr/lib/golang/src/crypto/internal/backend/openssl.go:34 +0x37 fp=0xc000359e20 sp=0xc000359ce0 pc=0x1674957
+runtime.doInit1(0x5cd42f0)
+	/usr/lib/golang/src/runtime/proc.go:7176 +0xe8 fp=0xc000359f50 sp=0xc000359e20 pc=0x1567468
+runtime.doInit(...)
+	/usr/lib/golang/src/runtime/proc.go:7143
+runtime.main()
+	/usr/lib/golang/src/runtime/proc.go:253 +0x350 fp=0xc000359fe0 sp=0xc000359f50 pc=0x1558a30
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000359fe8 sp=0xc000359fe0 pc=0x158ce01
+
+goroutine 2 gp=0xc000008c40 m=nil [force gc (idle)]:
+runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc00007cfa8 sp=0xc00007cf88 pc=0x1558dae
+runtime.goparkunlock(...)
+	/usr/lib/golang/src/runtime/proc.go:408
+runtime.forcegchelper()
+	/usr/lib/golang/src/runtime/proc.go:326 +0xb3 fp=0xc00007cfe0 sp=0xc00007cfa8 pc=0x1558c33
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc00007cfe8 sp=0xc00007cfe0 pc=0x158ce01
+created by runtime.init.6 in goroutine 1
+	/usr/lib/golang/src/runtime/proc.go:314 +0x1a
+
+goroutine 18 gp=0xc000102380 m=nil [GC sweep wait]:
+runtime.gopark(0x1?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc000078780 sp=0xc000078760 pc=0x1558dae
+runtime.goparkunlock(...)
+	/usr/lib/golang/src/runtime/proc.go:408
+runtime.bgsweep(0xc00010e000)
+	/usr/lib/golang/src/runtime/mgcsweep.go:318 +0xdf fp=0xc0000787c8 sp=0xc000078780 pc=0x154155f
+runtime.gcenable.gowrap1()
+	/usr/lib/golang/src/runtime/mgc.go:203 +0x25 fp=0xc0000787e0 sp=0xc0000787c8 pc=0x1535c65
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0000787e8 sp=0xc0000787e0 pc=0x158ce01
+created by runtime.gcenable in goroutine 1
+	/usr/lib/golang/src/runtime/mgc.go:203 +0x66
+
+goroutine 19 gp=0xc000102540 m=nil [GC scavenge wait]:
+runtime.gopark(0x10000?, 0x43d0eb0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc000078f78 sp=0xc000078f58 pc=0x1558dae
+runtime.goparkunlock(...)
+	/usr/lib/golang/src/runtime/proc.go:408
+runtime.(*scavengerState).park(0x5dc2560)
+	/usr/lib/golang/src/runtime/mgcscavenge.go:425 +0x49 fp=0xc000078fa8 sp=0xc000078f78 pc=0x153ed49
+runtime.bgscavenge(0xc00010e000)
+	/usr/lib/golang/src/runtime/mgcscavenge.go:658 +0x59 fp=0xc000078fc8 sp=0xc000078fa8 pc=0x153f319
+runtime.gcenable.gowrap2()
+	/usr/lib/golang/src/runtime/mgc.go:204 +0x25 fp=0xc000078fe0 sp=0xc000078fc8 pc=0x1535c05
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000078fe8 sp=0xc000078fe0 pc=0x158ce01
+created by runtime.gcenable in goroutine 1
+	/usr/lib/golang/src/runtime/mgc.go:204 +0xa5
+
+goroutine 3 gp=0xc000009500 m=nil [finalizer wait]:
+runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc00007d620 sp=0xc00007d600 pc=0x1558dae
+runtime.runfinq()
+	/usr/lib/golang/src/runtime/mfinal.go:194 +0x107 fp=0xc00007d7e0 sp=0xc00007d620 pc=0x1534c27
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc00007d7e8 sp=0xc00007d7e0 pc=0x158ce01
+created by runtime.createfing in goroutine 1
+	/usr/lib/golang/src/runtime/mfinal.go:164 +0x3d
+
+goroutine 20 gp=0xc000103a40 m=nil [chan receive]:
+runtime.gopark(0x157713e?, 0xc00006ea08?, 0x8?, 0x80?, 0x70b18d3e361d4?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc0000796e8 sp=0xc0000796c8 pc=0x1558dae
+runtime.chanrecv(0xc0001c6000, 0xc0000797a0, 0x1)
+	/usr/lib/golang/src/runtime/chan.go:583 +0x3bf fp=0xc000079760 sp=0xc0000796e8 pc=0x152059f
+runtime.chanrecv2(0x12a05f200?, 0x0?)
+	/usr/lib/golang/src/runtime/chan.go:447 +0x12 fp=0xc000079788 sp=0xc000079760 pc=0x15201d2
+k8s.io/klog.(*loggingT).flushDaemon(0x5dc3a00)
+	/go/src/github.com/openshift/console/vendor/k8s.io/klog/klog.go:1010 +0x66 fp=0xc0000797c8 sp=0xc000079788 pc=0x2c9f4c6
+k8s.io/klog.init.0.gowrap1()
+	/go/src/github.com/openshift/console/vendor/k8s.io/klog/klog.go:411 +0x25 fp=0xc0000797e0 sp=0xc0000797c8 pc=0x2c9ce45
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0000797e8 sp=0xc0000797e0 pc=0x158ce01
+created by k8s.io/klog.init.0 in goroutine 1
+	/go/src/github.com/openshift/console/vendor/k8s.io/klog/klog.go:411 +0xd2
+
+goroutine 4 gp=0xc0002acc40 m=nil [GC worker (idle)]:
+runtime.gopark(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc00007df50 sp=0xc00007df30 pc=0x1558dae
+runtime.gcBgMarkWorker()
+	/usr/lib/golang/src/runtime/mgc.go:1310 +0xe5 fp=0xc00007dfe0 sp=0xc00007df50 pc=0x1537d45
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc00007dfe8 sp=0xc00007dfe0 pc=0x158ce01
+created by runtime.gcBgMarkStartWorkers in goroutine 1
+	/usr/lib/golang/src/runtime/mgc.go:1234 +0x1c
+
+goroutine 5 gp=0xc0002ace00 m=nil [GC worker (idle)]:
+runtime.gopark(0x5e33300?, 0x3?, 0xab?, 0x94?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc00007e750 sp=0xc00007e730 pc=0x1558dae
+runtime.gcBgMarkWorker()
+	/usr/lib/golang/src/runtime/mgc.go:1310 +0xe5 fp=0xc00007e7e0 sp=0xc00007e750 pc=0x1537d45
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc00007e7e8 sp=0xc00007e7e0 pc=0x158ce01
+created by runtime.gcBgMarkStartWorkers in goroutine 1
+	/usr/lib/golang/src/runtime/mgc.go:1234 +0x1c
+
+goroutine 6 gp=0xc0002acfc0 m=nil [GC worker (idle)]:
+runtime.gopark(0x70b17ada652aa?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc00007ef50 sp=0xc00007ef30 pc=0x1558dae
+runtime.gcBgMarkWorker()
+	/usr/lib/golang/src/runtime/mgc.go:1310 +0xe5 fp=0xc00007efe0 sp=0xc00007ef50 pc=0x1537d45
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc00007efe8 sp=0xc00007efe0 pc=0x158ce01
+created by runtime.gcBgMarkStartWorkers in goroutine 1
+	/usr/lib/golang/src/runtime/mgc.go:1234 +0x1c
+
+goroutine 21 gp=0xc000103c00 m=nil [GC worker (idle)]:
+runtime.gopark(0x70b17ad9bf2bd?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc000079f50 sp=0xc000079f30 pc=0x1558dae
+runtime.gcBgMarkWorker()
+	/usr/lib/golang/src/runtime/mgc.go:1310 +0xe5 fp=0xc000079fe0 sp=0xc000079f50 pc=0x1537d45
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc000079fe8 sp=0xc000079fe0 pc=0x158ce01
+created by runtime.gcBgMarkStartWorkers in goroutine 1
+	/usr/lib/golang/src/runtime/mgc.go:1234 +0x1c
+
+goroutine 7 gp=0xc000185a40 m=nil [sleep]:
+runtime.gopark(0x70b17b104210c?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/lib/golang/src/runtime/proc.go:402 +0xce fp=0xc0001c5f58 sp=0xc0001c5f38 pc=0x1558dae
+time.Sleep(0x6fc23ac00)
+	/usr/lib/golang/src/runtime/time.go:195 +0x115 fp=0xc0001c5f98 sp=0xc0001c5f58 pc=0x1589d75
+sigs.k8s.io/controller-runtime/pkg/log.init.0.func1()
+	/go/src/github.com/openshift/console/vendor/sigs.k8s.io/controller-runtime/pkg/log/log.go:63 +0x2d fp=0xc0001c5fe0 sp=0xc0001c5f98 pc=0x2f17bcd
+runtime.goexit({})
+	/usr/lib/golang/src/runtime/asm_amd64.s:1695 +0x1 fp=0xc0001c5fe8 sp=0xc0001c5fe0 pc=0x158ce01
+created by sigs.k8s.io/controller-runtime/pkg/log.init.0 in goroutine 1
+	/go/src/github.com/openshift/console/vendor/sigs.k8s.io/controller-runtime/pkg/log/log.go:62 +0x1a
+
+rax    0x1
+rbx    0x0
+rcx    0x0
+rdx    0x129f22097
+rdi    0x5e30f70
+rsi    0xffffffff5cc4feb0
+rbp    0xffff5dd6bbb0
+rsp    0xffff5dd6b530
+r8     0xe9
+r9     0x72
+r10    0x2
+r11    0x0
+r12    0xffff5dd6b5b0
+r13    0x1
+r14    0xc0001021c0
+r15    0x1
+rip    0x1551765
+rflags 0x202
+cs     0x33
+fs     0x0
+gs     0x0

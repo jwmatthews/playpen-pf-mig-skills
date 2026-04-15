@@ -1,0 +1,20 @@
+[
+    {
+        "name": "frontend",
+        "address": "localhost:9005",
+        "initConfig": [
+            {
+                "analysisMode": "source-only",
+                "location": "./lightspeed-console"
+            }
+        ]
+    },
+    {
+        "name": "builtin",
+        "initConfig": [
+            {
+                "location": "./lightspeed-console"
+            }
+        ]
+    }
+]
