@@ -1,0 +1,9 @@
+[allowlist]
+  description = "Global Allowlist"
+
+  # Ignore based on any subset of the file path
+  paths = [
+     # Contains some temporary credentials for a local kind cluster in logs
+     '''experiments/migration-skill-lightspeed-console-A''',
+  ]
+

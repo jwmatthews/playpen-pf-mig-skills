@@ -1,0 +1,7 @@
+{
+  "dev_url": "http://localhost:9000",
+  "start_script": "./workspace/start-dev.sh",
+  "stop_script": "./workspace/stop-dev.sh",
+  "webpack_port": 9001,
+  "console_port": 9000
+}
