@@ -1,0 +1,4 @@
+name: semver-breaking-changes
+description: Breaking changes detected between v5.4.0 and v6.4.1 by semver-analyzer v0.0.4
+labels:
+- source=semver-analyzer
