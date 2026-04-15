@@ -25,8 +25,7 @@ Assume user confirmation for all actions. Do not prompt for user input.
 
 - **Work directory**: workspace root (`manifest.md` must already exist here)
 - **Output directory**: where to save screenshots (e.g., `<work_dir>/baseline`, `<work_dir>/post-migration-0`)
-- **Dev command**: command to start the dev server
-- **Project path**: path to the project source code
+- **Dev URL**: the dev server URL, already verified as responsive by the main agent (e.g., `http://localhost:9000`)
 
 ## Prerequisites
 
@@ -38,15 +37,13 @@ Assume user confirmation for all actions. Do not prompt for user input.
 
 Read `<work_dir>/manifest.md` to get the full list of elements to capture. **Every entry in the manifest must be captured.** Do not skip any entry.
 
-### 2. Start Application and Wait
+### 2. Verify Dev Server
 
-**The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Playwright operations will fail if the server is not ready.
-
-1. Start the dev server **in the background** (append `&` or equivalent) and capture the process ID
-2. Extract the local URL from the server output (e.g., `http://localhost:3000`)
-3. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. If it does not respond within 120 seconds, report the error and stop.
-4. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load
-5. **Do not call any `playwright-mcp` tool until both checks above pass.** Proceeding before the server is ready will cause screenshot failures.
+The main agent has already started the dev server and verified it is responsive. Confirm by running:
+```bash
+curl -sf -o /dev/null <dev_url> 2>/dev/null && echo "READY" || echo "NOT_READY"
+```
+If `NOT_READY`, **report the error and stop.** Do not attempt to start the dev server yourself — never run `npm start`, `npx webpack serve`, or any other startup command. The main agent is responsible for server lifecycle.
 
 ### 3. Capture Screenshots
 
@@ -69,9 +66,9 @@ After all captures, compare the list of `.png` files in `<output_dir>` against t
 
 **Also verify each screenshot shows the correct content** by reading each captured image and confirming it matches the manifest's description (Key elements, page title, expected components). If a screenshot shows the wrong page (e.g., a 404 page instead of the expected content, or an empty state instead of populated data), it must be re-captured.
 
-### 5. Stop Server
+### 5. Done
 
-Kill the dev server process. *This is important*
+Do not stop the dev server — the main agent manages server lifecycle.
 
 ## Output
 

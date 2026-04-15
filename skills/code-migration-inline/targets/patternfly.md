@@ -12,7 +12,7 @@ Pre-Migration → Phase 2 (Fix Loop) → Phase 3 (E2E Tests) → Visual Comparis
 
 ## Pre-Migration
 
-Complete BEFORE Phase 2.
+**Complete ALL of these steps BEFORE Phase 2. These steps are strictly sequential — each step must complete before the next one starts. Do not parallelize them.** The visual baseline (step 2) must capture the code in its original pre-migration state, before any tool modifies the source.
 
 ### 1. Discover UI Elements
 
@@ -81,7 +81,12 @@ Project: <project_path>
 
 ### 2. Capture Visual Baseline
 
-1. **Start application and wait** - **The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Playwright operations will fail if the server is not ready. Run dev server **in the background** (append `&` or equivalent) and capture the process ID. Extract the local URL from the server output. **Poll the URL every 2 seconds, up to 120 seconds**, until it returns a successful response. **After the server responds, wait an additional 5 seconds** for JS bundles and assets to fully load. **Do not call any `playwright-mcp` tool until both checks pass.**
+1. **Start dev server** using the scripts created during Phase 1:
+   ```bash
+   bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+   bash $WORK_DIR/start-dev.sh
+   ```
+   Verify the dev URL is responsive with `curl -sf -o /dev/null <dev_url>`. **Do not call any `playwright-mcp` tool until the server responds.**
 
 2. **Capture screenshots** - For each element in manifest, use `playwright-mcp`:
    - Navigate to page or trigger component (follow any **Setup** steps in the manifest entry)
@@ -90,17 +95,9 @@ Project: <project_path>
 
 3. **Verify** - Compare the list of `.png` files in `$WORK_DIR/baseline/` against manifest entries. Every manifest entry must have a corresponding screenshot.
 
-4. **Stop application**
+4. **Stop dev server**: `bash $WORK_DIR/stop-dev.sh 2>/dev/null || true`
 
-### 3. Run pf-codemods
-
-```bash
-npx @patternfly/pf-codemods@latest <project_path> --v6 --fix
-```
-
-This auto-fixes many PF5→PF6 issues. Some will still need manual fixes.
-
-### 4. Upgrade Dependencies
+### 3. Upgrade Dependencies
 
 Check `package.json` for all `@patternfly/*` dependencies and upgrade every one of them to `^6.x`. This includes packages like `@patternfly/react-core`, `@patternfly/react-table`, `@patternfly/react-icons`, `@patternfly/patternfly`, and any others the project uses. Then run `npm install`.
 
@@ -109,6 +106,31 @@ Verify build passes after upgrade. Address any obvious issues with the build bef
 ---
 
 ## During Migration
+
+### Known Kantra False Positives for PF6
+
+The following Kantra rules produce false positives for PF6 6.x. **Do not create fix groups for these. Do not re-verify them against type definitions — they have already been verified. Simply list them in status.md as false positives and move on.**
+
+| Kantra Rule Pattern | Why False Positive |
+|---|---|
+| `header=` → `masthead=` | Matches ANY `header` JSX prop, not just `Page.header` |
+| Deep import path restructuring | PF6 barrel imports from `@patternfly/react-core` work correctly |
+| `isOpen` → `open` | PF6 Select/Dropdown/Popover still use `isOpen` |
+| `isDisabled` → `disabled` | PF6 TextInput/Button/Select still use `isDisabled` |
+| `isExpanded` → `expanded` | PF6 ExpandableSection/MenuToggle still use `isExpanded` |
+| `isSelected` removal | PF6 MenuItem/SelectOption still use `isSelected` |
+| `isActive` → `active` | PF6 NavItem still uses `isActive` |
+| `spaceItems` removal | PF6 Flex still supports `spaceItems` |
+| `spacer` → `gap` | PF6 Flex/FlexItem still supports `spacer` (both `spacer` and `gap` work) |
+| `ButtonVariant.link` → `plain` | PF6 still has `link` variant |
+| `ButtonVariant.control` → `plain` | PF6 still has `control` variant |
+| `alignRight` → `alignEnd` | PF6 FlexItem `align` still accepts `alignRight` |
+| Modal `title` → `titleText` | Matches `title` on `ModalHeader` (the correct new API), not deprecated `Modal.title` |
+| `ErrorState` prop renames | Often a custom project component, not PF's `ErrorState` from `react-component-groups` |
+| `CardHeader selectableActions` | Often already using the correct PF6 `selectableActions` object API |
+| `ToolbarFilter chips` → `labels` | Often already using the correct PF6 `labels` prop; check actual props before creating a group |
+
+**These false positives are automatically removed by `filter_kantra_false_positives.py`.** Always run the filter script on Kantra output before analysis — the filtered output will only contain real issues. If you see any of the above patterns in filtered output, they were not caught by the filter; skip them manually.
 
 ### Fix Strategy
 
@@ -124,6 +146,29 @@ Avoid:
 - Suppressing warnings without fixing
 - Using `// @ts-ignore` on deprecated props
 - Creating wrappers that preserve old APIs
+- **Using `sed` for import statement modifications** — imports span multiple lines with complex formatting and `sed` frequently produces broken syntax. Use direct file editing instead.
+
+### CSS Variable Migration
+
+In addition to CSS class name prefixes (`pf-v5-c-*` → `pf-v6-c-*`), also update:
+- **CSS custom property overrides**: `--pf-v5-chart-*` → `--pf-v6-chart-*`, `--pf-v5-global-*` → check if migrated to `--pf-t-*` design tokens
+- **Theme CSS classes**: `pf-v5-theme-dark` → `pf-v6-theme-dark` (dark theme will not apply if the old class name is used)
+
+**Search all `.scss`, `.css`, `.less`, `.ts`, and `.tsx` files for `pf-v5` references after migration.** CSS variable references are silent failures — the old variable names compile without errors but have no effect at runtime. Test files (e.g., Playwright page objects) often contain `pf-v5-c-*` CSS selectors that also need updating.
+
+```bash
+grep -r "pf-v5" --include="*.scss" --include="*.css" --include="*.less" --include="*.ts" --include="*.tsx" <project_path>
+```
+
+### 4. Fix Deprecated Modal with Composable Children
+
+**Run this immediately after upgrading dependencies (step 3).** When `Modal` is moved to `@patternfly/react-core/deprecated`, `hasNoBodyWrapper` must be added. Without it, the deprecated Modal wraps all children in an extra `ModalBoxBody` div, causing ~60px vertical layout shifts.
+
+```bash
+python3 <scripts_dir>/fix_deprecated_modal_wrapper.py <project_path>
+```
+
+This automatically finds all `.tsx`/`.jsx` files that import `Modal` from `@patternfly/react-core/deprecated` with composable children (`ModalHeader`/`ModalBody`/`ModalFooter`) and adds `hasNoBodyWrapper` to each `<Modal>` tag. Review the JSON output to see which files were fixed.
 
 ### Typical Group Order
 
@@ -132,7 +177,7 @@ Adapt based on your findings:
 1. **Import paths** - Fix module imports first
 2. **Component API changes** - Removed/renamed props
 3. **Deprecated API replacements** - Old patterns → new
-4. **CSS/Styling** - Class names, design tokens
+4. **CSS/Styling** - Class names, design tokens, CSS custom properties
 
 ---
 
@@ -148,53 +193,36 @@ Repeat the following loop until no unchecked issues remain. N is the fix round, 
 
 Read `$WORK_DIR/manifest.md` (already created during pre-migration).
 
-1. **Start application and wait** - **The application MUST be running and fully responsive before any `playwright-mcp` interaction.** Run dev server **in the background** (append `&`) and capture the process ID. **Poll the URL every 2 seconds, up to 120 seconds.** After the server responds, **wait an additional 5 seconds** for JS bundles and assets. **Do not call any `playwright-mcp` tool until both checks pass.**
+1. **Start dev server**:
+   ```bash
+   bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+   bash $WORK_DIR/start-dev.sh
+   ```
+   Verify the dev URL is responsive. **Do not call any `playwright-mcp` tool until the server responds.**
 2. **Capture screenshots** - For each element in manifest, use `playwright-mcp`:
    - Navigate to page or trigger component
    - Wait for content to stabilize
    - Take screenshot → save to `$WORK_DIR/post-migration-N/<name>.png` (N = fix round, starting at 0)
-3. **Stop application**
+3. **Stop dev server**: `bash $WORK_DIR/stop-dev.sh 2>/dev/null || true`
 
 **Step 2: Compare**
 
 Compare `$WORK_DIR/baseline/` against `$WORK_DIR/post-migration-N/`.
 
-**Ground rules for comparison:**
-- **The baseline screenshot is the source of truth.** The post-migration screenshot must look identical to it.
-- **Do not rationalize differences.** If something looks different, it IS different. Do not explain away a difference as "expected due to the migration" or "acceptable styling variation." You have no context about what the migration should change visually — your only job is to detect what changed.
-- **Report every visible difference**, no matter how small. A slightly different shade, a font weight change — all are differences and must be reported.
-- **When in doubt, report it.** False positives are acceptable. Missed differences are not.
-- **You MUST visually inspect every screenshot yourself.** Do not write scripts, use PIL, ImageMagick, or any automated pixel-diffing tool as a substitute for looking at the images. You are a multimodal model — read the image files directly and describe what you see.
-- **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). Each region may have a different theme/color independently. Check each region's colors against the baseline — do not summarize the page as "all dark" or "all light."
+**Ground rules:** Baseline is the source of truth. Report every visible difference. Do not rationalize differences. Compare regions independently (masthead, sidebar, content, modals).
 
-First, for each manifest entry verify that **both** baseline and post-migration screenshots exist. If a post-migration screenshot is missing, report it as `❌ Major`.
+**Step 2a: Run pixel comparison script** to identify which screenshots have real differences:
+```bash
+python3 <scripts_dir>/compare_screenshots.py $WORK_DIR/baseline $WORK_DIR/post-migration-N > $WORK_DIR/pixel-comparison.json
+```
+Read the JSON output. Screenshots with status `identical` or `anti_aliasing_only` need no further analysis. **Only visually inspect screenshots with status `different` or `missing_post_migration`.**
 
-For each element in manifest where both screenshots exist:
-1. **Load both images** (baseline and post-migration)
-1a. **Verify page content matches the manifest description.** If the post-migration screenshot shows wrong content (e.g., a 404 page instead of the expected page, empty state when data was expected), report as `❌ Major`.
-2. **Describe baseline in detail**: Inventory every visible element — sections, components, text labels, icons, colors, borders, shadows, spacing, alignment, font sizes, background colors, divider lines, badge counts, hover states, scroll positions
-3. **Describe post-migration in detail**: Same inventory, independently — do not copy from the baseline description
-4. **Diff the two descriptions item by item**: Walk through every element you inventoried and compare. For each, explicitly state whether it is the same or different.
+**Step 2b: Visually inspect changed screenshots only.** For each screenshot flagged as `different`:
 
-**Scan for these specific difference categories:**
-
-| Category | What to look for |
-|----------|-----------------|
-| Layout | Position shifts, size changes, reflow, element reordering |
-| Spacing | Padding, margins, gaps between elements (even 1-2px) |
-| Colors | Background, text, borders, shadows, hover states, opacity |
-| Typography | Font family, size, weight, line-height, letter-spacing |
-| Borders & dividers | Thickness, style (solid/dashed), color, radius |
-| Icons | Different icon, different size, different color, missing |
-| Components | Missing, added, or replaced components |
-| Text content | Changed labels, truncation, wrapping differences |
-| Alignment | Horizontal/vertical alignment shifts |
-| Visibility | Elements present in one but hidden/absent in the other |
-
-**You MUST explicitly address EVERY category above for each element.** State "no difference" or describe the difference. Do not skip any.
-
-- List ALL differences found — one bullet per difference, with specific detail (e.g., "Card header padding changed from ~16px to ~12px", not "spacing changed")
-- Classify each difference: ⚠️ Minor (styling/spacing/color, does not break functionality) / ❌ Major (missing elements, broken layout, functional breakage)
+1. **Load both images** — baseline and post-migration — one read each
+1a. **Verify page content matches the manifest description.** If the post-migration screenshot shows wrong content (404 page, different page, empty state), report as `❌ Major`.
+2. **Describe what changed**: Use the pixel comparison `diff_regions` to focus on areas with actual differences. Describe the specific visual changes you see.
+3. **Classify each difference**: ⚠️ Minor (styling/spacing/color) / ❌ Major (missing elements, broken layout, functional breakage)
 
 **Both minor and major issues require fixes.** Do not dismiss minor issues as acceptable.
 
@@ -223,16 +251,18 @@ If unchecked (`[ ]`) issues remain → continue to step 4.
 
 **Step 4: Fix**
 
-**Ground rules for fixing:**
-- **The baseline screenshot is the source of truth.** The goal is to make post-migration screenshots look identical to baseline. Do not decide that a difference is "acceptable" or "expected."
-- **Do not rationalize differences.** If the baseline shows X and the current screenshot shows Y, that is a difference to fix — regardless of whether the migration "should" have changed it.
-- **Never dismiss the baseline as wrong or anomalous.** The baseline was captured from the working pre-migration application. If the baseline shows light content with a dark sidebar, that is the correct state to match.
-- **Compare regions independently.** A page has distinct regions (masthead, sidebar, content area, modals). If the baseline sidebar is dark but the content area is light, the fix must reproduce that exact combination — not make everything uniformly dark or light.
-- **Verify fixes against baseline, not against your expectations.** After making a fix, compare the new screenshot to the baseline screenshot — not to what you think it should look like.
+**Ground rules:** Baseline is the source of truth. Do not rationalize differences. Compare regions independently. Verify fixes by taking a screenshot and comparing to baseline. Do not create CSS override files — fix root causes. Do not write PIL/pixel analysis scripts.
 
 Read `$WORK_DIR/status.md` to understand what migration issues have been fixed so far. This helps identify root causes of visual regressions.
 
-Fix unchecked issues by page/route:
+**Start the dev server once** and keep it running for the entire fix process:
+```bash
+bash $WORK_DIR/stop-dev.sh 2>/dev/null || true
+bash $WORK_DIR/start-dev.sh
+```
+Verify the dev URL is responsive. **Do not call any `playwright-mcp` tool until the server responds.**
+
+Fix unchecked issues by page/route. **The dev server stays running throughout.** After making code changes, the dev server's hot module replacement (HMR) will automatically rebuild. Wait 3-5 seconds after saving code changes for HMR to complete before taking screenshots.
 
 1. **Group unchecked issues by page**
 2. **For each page with unchecked issues**:
@@ -240,17 +270,19 @@ Fix unchecked issues by page/route:
    - Identify cause in code — trace the visual difference to a specific code change (CSS property, component prop, class name, design token, etc.)
    - Make code changes to resolve. The fix must make the current rendering match the baseline.
    - Verify:
-     **The application MUST be running and fully responsive before any `playwright-mcp` interaction.**
-     - Start app **in the background** (append `&`) and capture the process ID
-     - **Poll the URL every 2 seconds, up to 120 seconds.** After the server responds, **wait an additional 5 seconds** for JS bundles and assets. **Do not call any `playwright-mcp` tool until both checks pass.**
+     - **Wait 3-5 seconds** after saving code changes for HMR to rebuild
+     - If the dev server has crashed or stopped responding (verify with a quick health check), restart it and wait for readiness before continuing
      - Use `playwright-mcp` to navigate to the page, take new screenshot
      - Compare the new screenshot against the **baseline** screenshot. Do not compare against the previous post-migration screenshot.
-     - Stop the app
    - If the issue persists (new screenshot still differs from baseline), try a different approach. Keep trying until fixed.
    - **First**: append a brief (2-3 line) summary to `$WORK_DIR/visual-fixes.md` describing what was changed and why (or noting the issue was unfixable and why). Write this before any other update so partial progress is preserved if the agent fails midway.
    - Copy the verified screenshot to the post-migration directory: `cp` the screenshot to `$WORK_DIR/post-migration-N/<name>.png`
    - Mark fixed issues as `[x]` in `$WORK_DIR/visual-diff-report.md`
    - Do not wait until all pages are done.
+
+**You MUST NOT mark an issue `[x]` without taking a new verification screenshot that confirms the fix.** Marking issues as "not a regression" or "expected" without a code fix and verification screenshot is not allowed — the baseline is the source of truth. If you cannot fix an issue after 3 attempts, leave it as `[ ]` and note it as unfixable in `visual-fixes.md` with the reason.
+
+3. **Stop the dev server** after all pages have been processed: `bash $WORK_DIR/stop-dev.sh 2>/dev/null || true`
 
 **Fix ALL issues (major AND minor) before completing migration.** Do not dismiss minor issues as acceptable.
 

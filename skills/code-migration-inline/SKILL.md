@@ -74,7 +74,16 @@ E2E tests: <command>
 Primary language: <language>
 ```
 
-### Step 2: Build Kantra Command
+### Step 2: Detect OpenShift Console Plugin
+
+Check whether the project is an OpenShift Console dynamic plugin. Look for **all** of these indicators:
+- `@openshift-console/dynamic-plugin-sdk` in `package.json` dependencies or devDependencies
+- A `console-extensions.json` file in the project root
+- A `ConsolePlugin` resource in any YAML/JSON file under the project
+
+If **any** indicator is present, mark the project as a console plugin (`IS_CONSOLE_PLUGIN=true`). Record this in `$WORK_DIR/status.md` under a `## Project Type` heading once the workspace is created.
+
+### Step 3: Build Kantra Command
 
 Construct the Kantra analyze command flags.
 
@@ -106,38 +115,273 @@ Construct the Kantra analyze command flags.
 --target=<migration_target>
 ```
 
-**You add `--input` and `--output`:**
+**You add `--input`, `--output`, and `--overwrite`:**
 
 ```bash
-kantra analyze --input <project> --output $WORK_DIR/round-N/kantra <FLAGS>
+kantra analyze --input <project> --output $WORK_DIR/round-N/kantra --overwrite <FLAGS>
 ```
 
-### Step 3: Create Workspace
+### Step 4: Create Workspace
 
 ```bash
 WORK_DIR=$(mktemp -d -t migration-$(date +%m_%d_%y_%H))
 ```
 
-### Step 4: Check Target Technology Specific Guidance
+### Step 5: Console Plugin Cluster Setup
 
-Read `targets/<target>.md` if it exists. Follow pre-migration steps before Phase 2.
+**Only perform this step if `IS_CONSOLE_PLUGIN=true` (detected in Step 2).**
+
+**5a. Prerequisites**: Verify `kubectl` and `curl` are available. If `kind` is not installed, install it:
+```bash
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+[ "$ARCH" = "x86_64" ] && ARCH="amd64"
+[ "$ARCH" = "aarch64" ] && ARCH="arm64"
+curl -Lo ./kind "https://kind.sigs.k8s.io/dl/v0.27.0/kind-${OS}-${ARCH}"
+chmod +x ./kind && mkdir -p "$HOME/.local/bin" && mv ./kind "$HOME/.local/bin/kind"
+```
+
+**5b. Create kind cluster**: Delete any existing cluster with the same name, then create one with a NodePort mapping (port 30443). Wait for the node to be Ready.
+
+**5c. Install OLM**:
+```bash
+kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/crds.yaml
+kubectl wait --for=condition=Established crd --all --timeout=60s
+kubectl create -f https://github.com/operator-framework/operator-lifecycle-manager/releases/latest/download/olm.yaml
+```
+Wait for `olm-operator`, `catalog-operator`, and `packageserver` deployments to roll out. Verify the `operatorhubio-catalog` CatalogSource is READY.
+
+**5d. Deploy OpenShift Console via OLM**: Create namespace `openshift-console`, an OperatorGroup, a ServiceAccount with cluster-admin, a `kubernetes.io/service-account-token` Secret, a ClusterServiceVersion deploying `quay.io/openshift/origin-console:latest` with `BRIDGE_K8S_MODE=off-cluster` and `BRIDGE_USER_AUTH=disabled`, and a NodePort Service on port 30443. Wait for the CSV to reach `Succeeded` and the pod to be Ready.
+
+**5e. Verify console health**: `curl -sf -o /dev/null http://localhost:30443/health`
+
+**5f. Collect credentials**: Extract `api_server`, `token`, `kubeconfig_path`, `ca_cert_path`, `context_name`, and `console_url`. Save to `$WORK_DIR/cluster-credentials.json`.
+
+**5g. Determine console plugin dev command**:
+- Read cluster credentials for `api_server` and `token`
+- Detect plugin name from `package.json` `name` field
+- Check for console start script (`ci/start-console.sh` or `console` script in `package.json`)
+
+**CRITICAL — `npm start` and webpack dev servers are long-running processes that NEVER exit on their own.**
+They start an HTTP server and keep running indefinitely to serve requests. **If you run them without `&`, your session WILL hang indefinitely and never recover.**
+
+You MUST construct the dev command as a **self-contained shell script** (`$WORK_DIR/start-dev.sh`) that handles cleanup, backgrounding, PID tracking, logging, and readiness polling internally. **Never run `npm start` or dev server commands directly in the shell tool** — always go through the script.
+
+Also create a companion **`$WORK_DIR/stop-dev.sh`** script for clean shutdown.
+
+**Do not run the dev command here to test it.** Just construct and save it. It will be executed later with proper background management and readiness polling.
+
+- If script exists: **Before using it, read the script contents to determine how it starts the console bridge.** Check whether the script runs `podman run` or `docker run` with or without the `-d` (detach) flag:
+  - If the script runs the container **without `-d`** (foreground/blocking), the script itself will never exit. **You must run the script in the background** with `&` and capture its PID.
+  - If the script runs the container **with `-d`** (detached mode), the container starts in the background and the script exits on its own. **Do not background the script** with `&` — let it run to completion so any startup errors are reported.
+  - **If you cannot determine the behavior from reading the script, default to running it in the background** with `&` to avoid hanging the session.
+
+#### start-dev.sh Template
+
+Every `start-dev.sh` script **MUST** follow this structure. The script handles its own backgrounding — callers run it with `bash $WORK_DIR/start-dev.sh` (no `&` needed).
+
+**Required elements:**
+1. **Port cleanup** — kill any leftover processes on ports 9001 and 9000 from previous failed runs
+2. **`nohup` + log redirection** — prevent shell timeout from killing the process; write output to log files
+3. **PID files** — write PIDs to `$WORK_DIR/*.pid` for clean shutdown
+4. **Readiness polling** — poll each port with `curl`, accepting exit code 22 (HTTP 404) for port 9001
+5. **Exit immediately** — the script must exit after starting and verifying servers, not block
+
+Example (blocking console script — run with `&`):
+```bash
+#!/bin/bash
+WORK_DIR=<work_dir>
+
+# Cleanup: kill leftover processes from previous runs
+fuser -k 9001/tcp 2>/dev/null || true
+fuser -k 9000/tcp 2>/dev/null || true
+podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
+sleep 1
+
+# 1. Start webpack dev server in background
+cd <project_path>
+nohup npm start > "$WORK_DIR/webpack.log" 2>&1 &
+echo $! > "$WORK_DIR/webpack.pid"
+
+# 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+# Accept exit code 0 (HTTP 200) or 22 (HTTP 404 — "Cannot GET /") as "ready"
+for i in $(seq 1 60); do
+  curl -sf -o /dev/null http://localhost:9005 2>/dev/null; rc=$?
+  [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
+  sleep 2
+done
+
+# 3. Start console bridge in background (blocking script)
+BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> \
+BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
+nohup bash ./ci/start-console.sh > "$WORK_DIR/bridge.log" 2>&1 &
+echo $! > "$WORK_DIR/bridge.pid"
+
+# 4. Poll until console bridge is ready on port 9000 (up to 120s)
+for i in $(seq 1 60); do
+  curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break
+  sleep 2
+done
+echo "Dev servers ready"
+```
+
+Example (detached console script — runs `podman run -d` and exits):
+```bash
+#!/bin/bash
+WORK_DIR=<work_dir>
+
+# Cleanup: kill leftover processes from previous runs
+fuser -k 9001/tcp 2>/dev/null || true
+fuser -k 9000/tcp 2>/dev/null || true
+podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
+sleep 1
+
+# 1. Start webpack dev server in background
+cd <project_path>
+nohup npm start > "$WORK_DIR/webpack.log" 2>&1 &
+echo $! > "$WORK_DIR/webpack.pid"
+
+# 2. Poll until webpack dev server is ready on port 9001 (up to 120s)
+for i in $(seq 1 60); do
+  curl -sf -o /dev/null http://localhost:9005 2>/dev/null; rc=$?
+  [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
+  sleep 2
+done
+
+# 3. Run console bridge script (starts container with -d, exits on its own)
+BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> \
+BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
+bash ./ci/start-console.sh > "$WORK_DIR/bridge.log" 2>&1
+
+# 4. Poll until console bridge is ready on port 9000 (up to 120s)
+for i in $(seq 1 60); do
+  curl -sf -o /dev/null http://localhost:9000 2>/dev/null && break
+  sleep 2
+done
+echo "Dev servers ready"
+```
+
+- If no script: use the same structure but replace step 3 with a generic podman console bridge:
+  ```bash
+  # 3. Start console bridge in background (also long-running)
+  podman run --rm --name=migration-console --network=host \
+    -e BRIDGE_USER_AUTH=disabled -e BRIDGE_K8S_MODE=off-cluster \
+    -e BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=<api_server> \
+    -e BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS=true \
+    -e BRIDGE_K8S_AUTH=bearer-token -e BRIDGE_K8S_AUTH_BEARER_TOKEN=<token> \
+    -e BRIDGE_PLUGINS=<plugin_name>=http://localhost:9005 \
+    -e BRIDGE_LISTEN=http://0.0.0.0:9000 \
+    quay.io/openshift/origin-console:latest > "$WORK_DIR/bridge.log" 2>&1 &
+  echo $! > "$WORK_DIR/bridge.pid"
+  ```
+
+#### stop-dev.sh
+
+Also create `$WORK_DIR/stop-dev.sh`:
+```bash
+#!/bin/bash
+WORK_DIR=<work_dir>
+kill $(cat "$WORK_DIR/webpack.pid" 2>/dev/null) 2>/dev/null || true
+kill $(cat "$WORK_DIR/bridge.pid" 2>/dev/null) 2>/dev/null || true
+podman stop migration-console okd-console 2>/dev/null || docker stop migration-console okd-console 2>/dev/null || true
+fuser -k 9001/tcp 2>/dev/null || true
+fuser -k 9000/tcp 2>/dev/null || true
+rm -f "$WORK_DIR/webpack.pid" "$WORK_DIR/bridge.pid"
+```
+
+- **Both servers must be running**: webpack dev server on port 9001 (serves plugin JS) and console bridge on port 9000 (provides the HTML shell that loads the plugin)
+- Console dev URL is `http://localhost:9000`
+- **Save the console dev command as a shell script file** at `$WORK_DIR/start-dev.sh` (not as a JSON string). Also save the URL to `$WORK_DIR/console-dev-setup.json` with a reference to the script path.
+
+### Step 6: Check Target Technology Specific Guidance
+
+Look for a target-specific file in `targets/`. Match by lowercased target name without version numbers (e.g., "PatternFly 6" → `patternfly.md`, "Spring Boot 3.x" → `spring-boot.md`). **Follow ALL pre-migration steps in the target file sequentially — each step must complete before the next one starts. Do not proceed to Phase 2 until all pre-migration steps are complete.**
 
 ---
 
 ## Phase 2: Fix Loop
 
+### Establish Test Baseline
+
+**Before making any code changes, run the full test suite to record pre-existing failures.** Record results in `$WORK_DIR/status.md`:
+
+```markdown
+## Test Baseline
+
+- Total: [count]
+- Passing: [count]
+- Pre-existing failures:
+  - [test name]: [brief reason] (NOT migration-related)
+```
+
+**Pre-existing failures do not count against the exit criteria.** The exit check is: "no NEW test failures introduced by the migration." Compare test results against this baseline, not against zero failures.
+
 ### First Round Only
 
 Run initial analysis to create the fix plan:
 
-1. Run Kantra: `kantra analyze --input <project> --output $WORK_DIR/round-1/kantra <FLAGS>`
-2. Parse Kantra output using the helper script:
+1. **Start the frontend analyzer provider** — this must be running before Kantra is invoked:
+   ```bash
+   # Create provider settings file
+   cat > "$WORK_DIR/provider_settings.json" <<'PROVIDER_EOF'
+   [
+       {
+           "name": "frontend",
+           "address": "localhost:9005",
+           "initConfig": [
+               {
+                   "analysisMode": "source-only",
+                   "location": "<project>"
+               }
+           ]
+       },
+       {
+           "name": "builtin",
+           "initConfig": [
+               {
+                   "location": "<project>"
+               }
+           ]
+       }
+   ]
+   PROVIDER_EOF
+
+   # Start frontend analyzer provider in background
+   nohup frontend-analyzer-provider serve -p 9005 > "$WORK_DIR/frontend-provider.log" 2>&1 &
+   echo $! > "$WORK_DIR/frontend-provider.pid"
+
+   # Wait for provider to be ready
+   for i in $(seq 1 30); do
+     curl -sf -o /dev/null http://localhost:9005 2>/dev/null; rc=$?
+     [ $rc -eq 0 ] || [ $rc -eq 22 ] && break
+     sleep 1
+   done
+   ```
+   Replace `<project>` with the actual project path in the provider settings file.
+
+2. Run Kantra — **Kantra analysis can take 5-15 minutes and will exceed the shell timeout.** Always run it in the background with `nohup` and redirect output to a log file.
+   **Important:** Kantra fails if the current directory is the input path. Always `cd $WORK_DIR` before running. Also set `JAVA_HOME` if not already set:
+   ```bash
+   cd "$WORK_DIR"
+   export JAVA_HOME="${JAVA_HOME:-$(dirname $(dirname $(readlink -f $(which java))))}"
+   nohup kantra analyze --input <project> --output $WORK_DIR/round-1/kantra --overwrite \
+     --override-provider-settings "$WORK_DIR/provider_settings.json" \
+     --enable-default-rulesets=false --skip-static-report --no-dependency-rules \
+     --mode source-only --run-local=true --provider=java \
+     --label-selector '!impact=frontend-testing' \
+     <FLAGS> > $WORK_DIR/round-1/kantra-run.log 2>&1 &
+   KANTRA_PID=$!
+   ```
+   Poll for completion: `while kill -0 $KANTRA_PID 2>/dev/null; do sleep 10; done`
+   Check `$WORK_DIR/round-1/kantra/output.yaml` exists before proceeding. If Kantra failed, check `$WORK_DIR/round-1/kantra-run.log` for errors.
+   **Note:** The `<FLAGS>` placeholder is replaced with flags from the kantra command builder. The flags above (`--override-provider-settings`, `--enable-default-rulesets=false`, etc.) are always included. If the command builder returns any of these same flags, do not duplicate them.
+3. Parse Kantra output using the helper script:
    - Overview: `python3 scripts/kantra_output_helper.py analyze $WORK_DIR/round-1/kantra/output.yaml`
    - File details: `python3 scripts/kantra_output_helper.py file $WORK_DIR/round-1/kantra/output.yaml <file>`
-3. Run build and lint commands
-4. Run unit tests
-5. Collect ALL issues from ALL sources (see Issue Sources table)
-6. Create `$WORK_DIR/status.md` using the template below
+4. Run build and lint commands
+5. Run unit tests
+6. Collect ALL issues from ALL sources (see Issue Sources table)
+7. Create `$WORK_DIR/status.md` using the template below
 
 ### Fix Loop Template
 
@@ -181,8 +425,8 @@ Round Checklist:
 ```
 
 1. **Pick**: Select first incomplete group from status.md
-2. **Fix**: Apply all fixes for that group
-3. **Validate**: Run Kantra, build, lint, unit tests
+2. **Fix**: Apply all fixes for that group. **Before renaming any prop or API based on Kantra suggestions, verify the new name exists in the target framework's type definitions** (e.g., check the `.d.ts` files or run `tsc --noEmit`). Kantra rules may suggest renames that are not yet reflected in the installed version's types — applying them blindly will break the build.
+3. **Validate**: Ensure the frontend analyzer provider is still running (`kill -0 $(cat $WORK_DIR/frontend-provider.pid) 2>/dev/null` — restart if needed). Run Kantra (in background with `nohup` as described above, including all `--override-provider-settings` and related flags), build, lint, unit tests
 4. **Update**: Mark group done, log the round
 
 **Run tests concisely:**
@@ -206,9 +450,9 @@ After each round, check:
 | Condition | Done? |
 |-----------|-------|
 | All groups complete | ☐ |
-| Kantra: 0 issues | ☐ |
+| Kantra: 0 real issues (false positives documented in status.md) | ☐ |
 | Build: passes | ☐ |
-| Unit tests: pass | ☐ |
+| Unit tests: no new failures vs baseline | ☐ |
 
 - **Any unchecked** → Continue loop (next group)
 - **All checked** → Proceed to Phase 3
@@ -248,6 +492,26 @@ Run E2E/behavioral tests and complete target-specific validation.
 3. If tests FAIL → Fix issues, re-run
 4. If tests PASS → Continue to target validation
 
+### Console Plugin Cluster Validation
+
+**Only perform this section if `IS_CONSOLE_PLUGIN=true` (detected in Phase 1 step 2).**
+
+Console dynamic plugins must be tested inside an OpenShift Console to verify they load, register their extensions, and render correctly.
+
+**1. Load cluster credentials**: Read `$WORK_DIR/cluster-credentials.json` (created in Phase 1). Verify cluster is still running by checking connectivity to the `api_server`. If not responsive, re-provision the cluster (repeat Phase 1 steps 5a-5f) and update `$WORK_DIR/cluster-credentials.json`.
+
+**2. Build and deploy plugin**: Build the plugin container image, load it into kind, create a Deployment + Service + `ConsolePlugin` CR in the cluster. Use existing deployment manifests if available.
+
+**3. Verify plugin**: Confirm the plugin appears in the console and check logs for loading errors.
+
+Log the result in `$WORK_DIR/status.md`:
+```markdown
+### Cluster Validation
+- Console plugin deployed: YES/NO
+- Plugin loaded in console: YES/NO
+- Console URL: <url>
+```
+
 ### Target Validation
 
 **Follow all post-migration steps in `targets/<target>.md`. These steps are mandatory — do not skip them.** The migration is not complete until all post-migration validation passes.
@@ -256,11 +520,12 @@ Run E2E/behavioral tests and complete target-specific validation.
 
 All must be checked:
 
-- [ ] Kantra: 0 issues
+- [ ] Kantra: 0 real issues (false positives documented)
 - [ ] Build: passes
-- [ ] Unit tests: pass
-- [ ] E2E tests: pass
+- [ ] Unit tests: no new failures vs baseline
+- [ ] E2E tests: pass (or no new failures vs baseline)
 - [ ] Target-specific validation complete
+- [ ] Console plugin loads in cluster (if `IS_CONSOLE_PLUGIN=true`)
 
 Update status.md:
 ```markdown
@@ -271,6 +536,7 @@ Update status.md:
 - Unit tests: PASS
 - E2E tests: PASS
 - Target validation: PASS
+- Console plugin validation: PASS/SKIP
 ```
 
 ---
@@ -436,7 +702,15 @@ Before writing `report-data.json`, cross-check the data:
 - `visual.pages` status values should match `visual-diff-report.md` — `[x]` → `pass`, `[ ]` → `fail`
 - Every screenshot file referenced in `visual.pages` should exist in the baseline and post-migration directories
 
-### 8. Generate HTML Report
+### 8. Stop Frontend Analyzer Provider
+
+**Stop the frontend analyzer provider** — it is no longer needed after analysis is complete:
+```bash
+kill $(cat "$WORK_DIR/frontend-provider.pid" 2>/dev/null) 2>/dev/null || true
+rm -f "$WORK_DIR/frontend-provider.pid"
+```
+
+### 9. Generate HTML Report
 
 Run:
 ```bash
@@ -455,3 +729,7 @@ Tell the user the path to the generated `report.html`.
 - **Document unfixable issues** after 2+ failed approaches
 - **Use all issue sources** - Kantra is just one input
 - **Report test results concisely** - counts and failures only, not full output
+- **Never renumber, relabel, or remove groups from status.md.** Groups are numbered when the plan is created and those numbers are permanent. If a group cannot be fixed after 2+ attempts, mark it as `[!] Group N: [Name] - UNFIXABLE: [reason]` — do not delete it, reassign its number to another group, or merge it into a different group.
+- **Attempt every group.** Do not skip a group because it uses deprecated-but-functional APIs. If Kantra flags it, attempt the migration to the new API. Only classify a group as unfixable if the fix breaks the build or tests after 2+ different approaches.
+- **NEVER run dev servers directly in the shell tool** — `npm start`, `webpack serve`, `npm run dev`, and similar dev server commands are long-running and will hang the shell. **Always use `$WORK_DIR/start-dev.sh`** to start them and **`$WORK_DIR/stop-dev.sh`** to stop them. These scripts handle backgrounding, PID tracking, log redirection, port cleanup, and readiness polling internally. Never construct dev server commands inline.
+- **Before starting dev servers, always clean up leftover processes** — run `bash $WORK_DIR/stop-dev.sh` first, or at minimum `fuser -k 9001/tcp 2>/dev/null; fuser -k 9000/tcp 2>/dev/null` to avoid `EADDRINUSE` errors from previous failed runs.

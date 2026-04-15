@@ -19,11 +19,12 @@ parameters:
     description: "Path to custom Kantra rulesets"
     default: "<none>"
 
-  - key: enable_default_rulesets
-    input_type: boolean
-    requirement: optional
-    default: true
-    description: "Enable default rulesets"
+extensions:
+  - type: builtin
+    name: developer
+    display_name: Developer
+    timeout: 600
+    bundled: true
 
 prompt: |
   You are a Kantra CLI specialist. Return the correct flags for `kantra analyze` based on the project and migration goal.
@@ -33,9 +34,8 @@ prompt: |
   - **Project path**: {{ project_path }}
   - **Migration goal**: {{ migration_goal }}
   {% if custom_rules_path %}- **Custom rules path**: {{ custom_rules_path }}{% endif %}
-  - **Enable default rulesets**: {{ enable_default_rulesets }}
 
-  **You return all flags EXCEPT `--input` and `--output`** (the main recipe adds those).
+  **You return all flags EXCEPT `--input`, `--output`, `--overwrite`, `--enable-default-rulesets`, and `--provider`** (the main recipe adds those).
 
 instructions: |
   ## Process
@@ -45,23 +45,13 @@ instructions: |
   kantra analyze --help
   ```
 
-  ### 2. Determine Provider
-
-  | File | Provider |
-  |------|----------|
-  | `package.json` | `nodejs` |
-  | `pom.xml` or `build.gradle` | `java` |
-  | `requirements.txt` or `setup.py` | `python` |
-  | `go.mod` | `go` |
-  | `.csproj` or `.sln` | `dotnet` |
-
-  ### 3. List Available Targets
+  ### 2. List Available Targets
 
   ```bash
   kantra analyze --list-targets {% if custom_rules_path %}--rules {{ custom_rules_path }}{% endif %}
   ```
 
-  ### 4. Map Goal to Target
+  ### 3. Map Goal to Target
 
   Match user's goal to actual target name. Include `--source` if migrating from a specific version.
 
@@ -70,12 +60,11 @@ instructions: |
   Return ONE line:
 
   ```
-  KANTRA_FLAGS: --provider <provider> --target <target> [--source <source>] [--rules <path>]
+  KANTRA_FLAGS: --target <target> [--source <source>] [--rules <path>]
   ```
 
   ## Rules
 
-  1. Always include `--provider`
-  2. Verify target names with `--list-targets` (don't guess)
-  3. Multiple `--target` flags allowed if needed
-  4. `--source` is optional
+  1. Verify target names with `--list-targets` (don't guess)
+  2. Multiple `--target` flags allowed if needed
+  3. `--source` is optional
