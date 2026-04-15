@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Migration Report - ./lightspeed-console</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1f2937; background: #f9fafb; line-height: 1.5; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  header { background: #1e293b; color: white; padding: 32px; margin: -24px -24px 24px; }
+  header h1 { font-size: 24px; margin-bottom: 8px; }
+  .header-meta { display: flex; gap: 24px; flex-wrap: wrap; font-size: 14px; color: #94a3b8; }
+  .header-meta span { display: flex; align-items: center; gap: 4px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; margin-bottom: 24px; }
+  .tab { background: none; border: none; padding: 12px 24px; cursor: pointer; font-size: 14px; font-weight: 500; color: #6b7280; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+  .tab:hover { color: #1f2937; }
+  .tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .banner { padding: 16px 20px; border-radius: 8px; margin-bottom: 16px; font-weight: 500; }
+  .banner-success { background: #dcfce7; color: #16a34a; }
+  .card { background: white; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .card-type { font-weight: 600; font-size: 13px; text-transform: uppercase; }
+  .card-page { font-size: 13px; color: #6b7280; }
+  .recommendation { color: #4b5563; font-size: 14px; }
+  .details { color: #6b7280; font-size: 13px; }
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .status-item { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 8px; }
+  .status-label { font-size: 13px; color: #6b7280; font-weight: 500; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  th { background: #f8fafc; text-align: left; padding: 10px 16px; font-size: 13px; font-weight: 600; color: #475569; border-bottom: 1px solid #e5e7eb; }
+  td { padding: 10px 16px; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
+  details { margin-bottom: 24px; }
+  summary { cursor: pointer; font-weight: 500; padding: 8px 0; color: #2563eb; }
+  h3 { font-size: 18px; margin-bottom: 12px; color: #1e293b; }
+  .visual-page { margin-bottom: 32px; }
+  .screenshots { display: flex; gap: 16px; flex-wrap: wrap; }
+  .screenshot { flex: 1; min-width: 300px; }
+  .screenshot h4 { font-size: 14px; color: #6b7280; margin-bottom: 8px; }
+  .screenshot img { width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; }
+  .notes { color: #6b7280; font-size: 14px; margin-bottom: 12px; }
+  .muted { color: #9ca3af; font-style: italic; }
+  .md-content { background: white; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .md-content h2 { font-size: 20px; margin: 24px 0 12px; color: #1e293b; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+  .md-content h3 { font-size: 16px; margin: 16px 0 8px; color: #334155; }
+  .md-content h4 { font-size: 14px; margin: 12px 0 6px; color: #475569; font-family: monospace; }
+  .md-content ul { margin: 0 0 12px 20px; }
+  .md-content li { margin-bottom: 6px; font-size: 14px; }
+  .md-content li input[type="checkbox"] { margin-right: 6px; }
+  .md-content code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; font-size: 13px; }
+  .md-content hr { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
+  .md-content p { margin-bottom: 8px; font-size: 14px; }
+  @media print {
+    body { background: white; }
+    .container { max-width: none; padding: 0; }
+    header { background: #1e293b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .tab-content { display: block !important; page-break-inside: avoid; }
+    .tabs { display: none; }
+    .tab-content::before { content: attr(data-title); display: block; font-size: 20px; font-weight: 700; margin: 24px 0 12px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; }
+    .screenshot img { max-height: 400px; object-fit: contain; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>./lightspeed-console</h1>
+    <div class="header-meta">
+      <span>PatternFly 5 &rarr; PatternFly 6</span>
+      <span><span class="badge" style="color:#16a34a;background:#dcfce7">complete</span></span>
+      <span>2026-04-15 10:25</span>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('summary')">Migration Summary</button>
+    <button class="tab" onclick="switchTab('action')">Action Required</button>
+    
+    
+  </div>
+
+  <div id="summary" class="tab-content active" data-title="Migration Summary">
+    <div class="status-grid"><div class="status-item"><span class="status-label">Build</span><span class="badge" style="color:#16a34a;background:#dcfce7">PASS</span></div><div class="status-item"><span class="status-label">Unit Tests</span><span class="badge" style="color:#6b7280;background:#f3f4f6">NONE</span></div><div class="status-item"><span class="status-label">E2E Tests</span><span class="badge" style="color:#6b7280;background:#f3f4f6">NONE</span></div><div class="status-item"><span class="status-label">Lint</span><span class="badge" style="color:#16a34a;background:#dcfce7">PASS</span></div><div class="status-item"><span class="status-label">Target Validation</span><span class="badge" style="color:#6b7280;background:#f3f4f6">NONE</span></div></div><h3>Issue Groups Fixed</h3><table><thead><tr><th>Group</th><th>Status</th><th>Issues Fixed</th><th>Description</th></tr></thead><tbody><tr><td>Group 1: Text/TextVariants → Content/ContentVariants</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">complete</span></td><td>2</td><td>Deprecated Text component migration</td></tr><tr><td>Group 2: Modal Migration (ConfirmationModal)</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">complete</span></td><td>5</td><td>PF5 Modal → PF6 composable Modal</td></tr><tr><td>Group 3: Label color gold → yellow</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">complete</span></td><td>1</td><td>Label color value change</td></tr><tr><td>Group 4: PageSection variant light removed</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">complete</span></td><td>2</td><td>Remove deprecated variant + utility class renames</td></tr><tr><td>Group 5: CSS pf-v5 → pf-v6 migration</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">complete</span></td><td>7</td><td>All CSS variable and class prefix renames + logical property renames</td></tr><tr><td>Group 6: Test file CSS selectors</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">complete</span></td><td>2</td><td>Update pf-v5 selectors in Cypress tests</td></tr></tbody></table><h3>Fix Iteration Logs</h3><details><summary>Show all iterations</summary><table><thead><tr><th>Iteration</th><th>Group</th><th>Fixed</th><th>New Issues</th><th>Build</th><th>Tests</th></tr></thead><tbody><tr><td>1</td><td>Groups 1-4 (Component Changes)</td><td>10</td><td>0</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">PASS</span></td><td>N/A</td></tr><tr><td>2</td><td>Group 5 (CSS Migration)</td><td>7</td><td>0</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">PASS</span></td><td>N/A</td></tr><tr><td>3</td><td>Group 6 (Test Selectors)</td><td>2</td><td>0</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">PASS</span></td><td>N/A</td></tr><tr><td>4</td><td>Final Validation (Kantra)</td><td>0</td><td>0</td><td><span class="badge" style="color:#16a34a;background:#dcfce7">PASS</span></td><td>N/A</td></tr></tbody></table></details><h3>Kantra Residual (66 incidents)</h3><table><thead><tr><th>Rule</th><th>Count</th><th>Reason</th></tr></thead><tbody><tr><td>Button variant type changed</td><td>24</td><td>Informational — PF6 added 'stateful' variant; existing values still valid</td></tr><tr><td>CSS logical property renames</td><td>13</td><td>Already fixed — Applied all suffix renames; rule persists due to broad pattern matching</td></tr><tr><td>sd-cf-form-form-req-wrap</td><td>4</td><td>False positive — Form children (ActionGroup, FormGroup, Spinner) are valid PF6 children</td></tr><tr><td>Label color type changed</td><td>4</td><td>Informational — Already fixed gold→yellow; rule notes compatible type signature change</td></tr><tr><td>Card type changed</td><td>4</td><td>Informational — FunctionComponent → ForwardRefExoticComponent, compatible</td></tr><tr><td>sd-cf-descriptionlist-description-not-in-group</td><td>3</td><td>False positive — DescriptionListDescription is correctly inside DescriptionListGroup</td></tr><tr><td>CodeEditor signature changed</td><td>2</td><td>Informational — Internal readonly change, no user-facing impact</td></tr><tr><td>IconProps removed</td><td>2</td><td>Informational — Code uses Icon component, not IconProps interface directly</td></tr><tr><td>TextArea resizeOrientation type changed</td><td>2</td><td>Informational — Added 'none' option; existing 'vertical' still works</td></tr><tr><td>Dropdown onSelect type changed</td><td>2</td><td>Informational — Compatible signature change</td></tr><tr><td>sd-cf-card-card-req-expandablecontent-and-header</td><td>1</td><td>False positive — Card does not require CardExpandableContent or CardHeader</td></tr><tr><td>sd-cf-page-page-req-breadcrumb</td><td>1</td><td>False positive — Page does not require PageBreadcrumb</td></tr><tr><td>CodeEditorProps signature changed</td><td>1</td><td>Informational — Base class change (React.HTMLProps → HTMLProps), compatible</td></tr><tr><td>ExpandableSectionProps signature changed</td><td>1</td><td>Informational — Base class change, compatible</td></tr><tr><td>ModalProps signature changed</td><td>1</td><td>Informational — Already migrated to composable Modal</td></tr><tr><td>Select onSelect type changed</td><td>1</td><td>Informational — Compatible signature change</td></tr></tbody></table>
+  </div>
+
+  <div id="action" class="tab-content" data-title="Action Required">
+    <div class="card" style="border-left:4px solid #2563eb"><div class="card-header"><span class="card-type" style="color:#2563eb">Visual Change to Review</span></div><p>Visual regression testing was skipped because the OpenShift Console bridge container (quay.io/openshift/origin-console) crashes under QEMU x86_64 emulation on ARM Mac.</p><p class="recommendation"><strong>Recommendation:</strong> Test the plugin visually on an x86_64 machine or a real OpenShift cluster before merging.</p></div>
+<div class="card" style="border-left:4px solid #7c3aed"><div class="card-header"><span class="card-type" style="color:#7c3aed">Manual Intervention Needed</span></div><p>Cypress E2E tests require a live OLS backend API and OpenShift cluster and could not be run in this environment.</p><p class="recommendation"><strong>Recommendation:</strong> Run `npm run test-headless` in a proper test environment to verify no regressions.</p></div>
+<div class="card" style="border-left:4px solid #7c3aed"><div class="card-header"><span class="card-type" style="color:#7c3aed">Manual Intervention Needed</span></div><p>The pf-styles.css file contains custom PatternFly Slider and CodeEditor CSS overrides that were mechanically renamed from pf-v5 to pf-v6 prefixes and design tokens.</p><p class="recommendation"><strong>Recommendation:</strong> Verify these overrides still produce the intended visual result, as PF6 may have changed some underlying CSS variable values or structures.</p></div>
+  </div>
+
+  
+
+  
+
+</div>
+<script>
+function switchTab(id) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

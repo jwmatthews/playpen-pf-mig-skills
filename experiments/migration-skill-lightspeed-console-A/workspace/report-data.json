@@ -1,0 +1,204 @@
+{
+  "migration": {
+    "source": "PatternFly 5",
+    "target": "PatternFly 6",
+    "project": "./lightspeed-console",
+    "timestamp": "2026-04-15T10:25:00Z",
+    "workspace": "./workspace"
+  },
+  "summary": {
+    "total_rounds": 4,
+    "status": "complete",
+    "build": "PASS",
+    "unit_tests": "NONE",
+    "e2e_tests": "NONE",
+    "lint": "PASS",
+    "target_validation": "NONE"
+  },
+  "action_required": [
+    {
+      "type": "visual_review",
+      "description": "Visual regression testing was skipped because the OpenShift Console bridge container (quay.io/openshift/origin-console) crashes under QEMU x86_64 emulation on ARM Mac.",
+      "recommendation": "Test the plugin visually on an x86_64 machine or a real OpenShift cluster before merging."
+    },
+    {
+      "type": "manual_intervention",
+      "description": "Cypress E2E tests require a live OLS backend API and OpenShift cluster and could not be run in this environment.",
+      "recommendation": "Run `npm run test-headless` in a proper test environment to verify no regressions."
+    },
+    {
+      "type": "manual_intervention",
+      "description": "The pf-styles.css file contains custom PatternFly Slider and CodeEditor CSS overrides that were mechanically renamed from pf-v5 to pf-v6 prefixes and design tokens.",
+      "recommendation": "Verify these overrides still produce the intended visual result, as PF6 may have changed some underlying CSS variable values or structures."
+    }
+  ],
+  "groups": [
+    {
+      "name": "Group 1: Text/TextVariants → Content/ContentVariants",
+      "status": "complete",
+      "issues_fixed": 2,
+      "files": ["AttachEventsModal.tsx", "AttachLogModal.tsx", "AttachmentModal.tsx", "NewChatModal.tsx"],
+      "description": "Deprecated Text component migration"
+    },
+    {
+      "name": "Group 2: Modal Migration (ConfirmationModal)",
+      "status": "complete",
+      "issues_fixed": 5,
+      "files": ["ConfirmationModal.tsx"],
+      "description": "PF5 Modal → PF6 composable Modal"
+    },
+    {
+      "name": "Group 3: Label color gold → yellow",
+      "status": "complete",
+      "issues_fixed": 1,
+      "files": ["ResponseToolModal.tsx", "ResponseTools.tsx"],
+      "description": "Label color value change"
+    },
+    {
+      "name": "Group 4: PageSection variant light removed",
+      "status": "complete",
+      "issues_fixed": 2,
+      "files": ["GeneralPage.tsx"],
+      "description": "Remove deprecated variant + utility class renames"
+    },
+    {
+      "name": "Group 5: CSS pf-v5 → pf-v6 migration",
+      "status": "complete",
+      "issues_fixed": 7,
+      "files": ["pf-styles.css", "general-page.css", "popover.css"],
+      "description": "All CSS variable and class prefix renames + logical property renames"
+    },
+    {
+      "name": "Group 6: Test file CSS selectors",
+      "status": "complete",
+      "issues_fixed": 2,
+      "files": ["tests/tests/lightspeed-install.cy.ts"],
+      "description": "Update pf-v5 selectors in Cypress tests"
+    }
+  ],
+  "rounds": [
+    {
+      "number": 1,
+      "group": "Groups 1-4 (Component Changes)",
+      "issues_fixed": 10,
+      "new_issues": 0,
+      "build": "PASS",
+      "tests": "N/A"
+    },
+    {
+      "number": 2,
+      "group": "Group 5 (CSS Migration)",
+      "issues_fixed": 7,
+      "new_issues": 0,
+      "build": "PASS",
+      "tests": "N/A"
+    },
+    {
+      "number": 3,
+      "group": "Group 6 (Test Selectors)",
+      "issues_fixed": 2,
+      "new_issues": 0,
+      "build": "PASS",
+      "tests": "N/A"
+    },
+    {
+      "number": 4,
+      "group": "Final Validation (Kantra)",
+      "issues_fixed": 0,
+      "new_issues": 0,
+      "build": "PASS",
+      "tests": "N/A"
+    }
+  ],
+  "visual": {
+    "has_screenshots": false,
+    "baseline_dir": "workspace/baseline",
+    "post_migration_dir": "workspace/post-migration",
+    "pages": []
+  },
+  "kantra_residual": {
+    "total_incidents": 66,
+    "categories": [
+      {
+        "rule": "Button variant type changed",
+        "count": 24,
+        "reason": "Informational — PF6 added 'stateful' variant; existing values still valid"
+      },
+      {
+        "rule": "CSS logical property renames",
+        "count": 13,
+        "reason": "Already fixed — Applied all suffix renames; rule persists due to broad pattern matching"
+      },
+      {
+        "rule": "sd-cf-form-form-req-wrap",
+        "count": 4,
+        "reason": "False positive — Form children (ActionGroup, FormGroup, Spinner) are valid PF6 children"
+      },
+      {
+        "rule": "Label color type changed",
+        "count": 4,
+        "reason": "Informational — Already fixed gold→yellow; rule notes compatible type signature change"
+      },
+      {
+        "rule": "Card type changed",
+        "count": 4,
+        "reason": "Informational — FunctionComponent → ForwardRefExoticComponent, compatible"
+      },
+      {
+        "rule": "sd-cf-descriptionlist-description-not-in-group",
+        "count": 3,
+        "reason": "False positive — DescriptionListDescription is correctly inside DescriptionListGroup"
+      },
+      {
+        "rule": "CodeEditor signature changed",
+        "count": 2,
+        "reason": "Informational — Internal readonly change, no user-facing impact"
+      },
+      {
+        "rule": "IconProps removed",
+        "count": 2,
+        "reason": "Informational — Code uses Icon component, not IconProps interface directly"
+      },
+      {
+        "rule": "TextArea resizeOrientation type changed",
+        "count": 2,
+        "reason": "Informational — Added 'none' option; existing 'vertical' still works"
+      },
+      {
+        "rule": "Dropdown onSelect type changed",
+        "count": 2,
+        "reason": "Informational — Compatible signature change"
+      },
+      {
+        "rule": "sd-cf-card-card-req-expandablecontent-and-header",
+        "count": 1,
+        "reason": "False positive — Card does not require CardExpandableContent or CardHeader"
+      },
+      {
+        "rule": "sd-cf-page-page-req-breadcrumb",
+        "count": 1,
+        "reason": "False positive — Page does not require PageBreadcrumb"
+      },
+      {
+        "rule": "CodeEditorProps signature changed",
+        "count": 1,
+        "reason": "Informational — Base class change (React.HTMLProps → HTMLProps), compatible"
+      },
+      {
+        "rule": "ExpandableSectionProps signature changed",
+        "count": 1,
+        "reason": "Informational — Base class change, compatible"
+      },
+      {
+        "rule": "ModalProps signature changed",
+        "count": 1,
+        "reason": "Informational — Already migrated to composable Modal"
+      },
+      {
+        "rule": "Select onSelect type changed",
+        "count": 1,
+        "reason": "Informational — Compatible signature change"
+      }
+    ]
+  }
+}
